@@ -80,7 +80,7 @@ export class Player {
     // Souris
     const { dx, dy } = consumeMouseDelta();
     this.yaw -= dx * 0.0025 * state.options.mouseSensitivity;
-    this.pitch -= dy * 0.0025 * state.options.mouseSensitivity;
+    this.pitch += dy * 0.0025 * state.options.mouseSensitivity;
     this.pitch = Math.max(-1.2, Math.min(0.9, this.pitch));
 
     // Mode / vitesse
