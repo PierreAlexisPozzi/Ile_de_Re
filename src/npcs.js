@@ -4,6 +4,28 @@
 import * as THREE from 'three';
 import { heightAt } from './world.js';
 import { state } from './state.js';
+import { buildHumanoid, animateHumanoid } from './character.js';
+
+// Apparence d'un PNJ selon son métier et son époque.
+function npcLook(def, eraId) {
+  const hatByEra = {
+    prehistoire: null, antiquite: null, moyenage: null,
+    xvii: 'tricorne', xix: null, wwii: null, contemporaine: 'cap',
+  };
+  let hat = hatByEra[eraId] || null;
+  let shirt = def.color;
+  let pants = 0x3a3326;
+  let hair = 0x33271a;
+  if (def.id.includes('frere') || def.id.includes('anselme')) { hat = 'monk'; shirt = 0x4a3f2a; pants = 0x4a3f2a; }
+  if (def.id.includes('resistant') || def.id.includes('leon')) { hat = 'cap'; }
+  if (eraId === 'wwii' && def.id.includes('helene')) hat = null;
+  if (def.id.includes('soldat') || def.portrait === '⚙') hat = 'helmet';
+  if (def.id.includes('vauban')) { hat = 'tricorne'; shirt = 0x4a2a1a; }
+  return {
+    shirt, pants, hair, skin: 0xe0ad88, accent: 0x8a5a2a,
+    hat, backpack: false,
+  };
+}
 
 export const NPC_DEFS = [
   // Préhistoire
@@ -241,46 +263,37 @@ export class NPCManager {
       if (def.era !== eraId) continue;
       const loc = locations.find((l) => l.id === def.location);
       if (!loc) continue;
-      // Position autour du lieu (rayon aléatoire stable)
-      const seed = def.id.charCodeAt(0);
+      // Position sur la place du village (devant les bâtiments, pas dedans)
+      const seed = def.id.charCodeAt(0) + def.id.charCodeAt(1);
       const angle = (seed % 17) / 17 * Math.PI * 2;
-      const r = 6 + (seed % 5);
+      const r = 5 + (seed % 3);
       const x = loc.position[0] + Math.cos(angle) * r;
       const z = loc.position[2] + Math.sin(angle) * r;
       const y = heightAt(x, z);
-      const npc = this.buildNPCMesh(def);
-      npc.position.set(x, y, z);
-      npc.userData = { def, originalY: y, locId: loc.id };
-      this.group.add(npc);
-      this.npcs.push(npc);
+      const av = buildHumanoid(npcLook(def, eraId));
+      av.group.position.set(x, y, z);
+      av.group.userData = { def, originalY: y, locId: loc.id };
+      av.group.userData.parts = av.parts;
+      av.group.userData.phase = seed;
+      this.group.add(av.group);
+      this.npcs.push(av.group);
     }
-  }
-
-  buildNPCMesh(def) {
-    const g = new THREE.Group();
-    const bodyMat = new THREE.MeshLambertMaterial({ color: def.color });
-    const skinMat = new THREE.MeshLambertMaterial({ color: 0xd4a888 });
-    const body = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.35, 1.1, 4, 8), bodyMat
-    );
-    body.position.y = 0.9; g.add(body);
-    const head = new THREE.Mesh(
-      new THREE.SphereGeometry(0.3, 12, 10), skinMat
-    );
-    head.position.y = 1.8; g.add(head);
-    return g;
   }
 
   update(dt, time, playerPos) {
     for (const npc of this.npcs) {
-      // Légère oscillation idle + rotation vers le joueur si proche
       const dx = playerPos.x - npc.position.x;
       const dz = playerPos.z - npc.position.z;
       const d = Math.hypot(dx, dz);
-      if (d < 8) {
-        npc.rotation.y = Math.atan2(dx, dz);
+      if (d < 9) {
+        const target = Math.atan2(dx, dz);
+        const diff = ((target - npc.rotation.y + Math.PI) % (Math.PI * 2)) - Math.PI;
+        npc.rotation.y += diff * Math.min(1, dt * 4);
       }
-      npc.position.y = npc.userData.originalY + Math.sin(time * 1.5 + npc.position.x) * 0.04;
+      // animation de repos (respiration / léger balancement)
+      const phase = time * 1.4 + npc.userData.phase;
+      animateHumanoid(npc.userData.parts, phase, 0, dt, false);
+      npc.position.y = npc.userData.originalY;
     }
   }
 

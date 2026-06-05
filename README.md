@@ -24,7 +24,8 @@ Un workflow `.github/workflows/pages.yml` publie automatiquement le site
 
 ### En local
 
-Aucune dépendance à installer. Three.js est chargé via un import-map CDN.
+Aucune dépendance à installer ni réseau requis : Three.js est embarqué
+dans `vendor/three.module.js` et chargé via un import-map local.
 
 ```bash
 # Depuis la racine du dépôt :
@@ -78,13 +79,16 @@ Un serveur statique est requis (les modules ES ne se chargent pas en `file://`).
 ```
 index.html              Point d'entrée
 style.css               UI
+vendor/three.module.js  Three.js embarqué (aucune dépendance réseau)
 src/
-  main.js               Boucle de jeu, init Three.js
-  world.js              Génération de l'île, terrain, océan, végétation
+  main.js               Boucle de jeu, init Three.js, collisions
+  world.js              Île, terrain texturé, bâtiments, chemins, colliders
+  textures.js           Textures procédurales (pierre, tuiles, herbe, pavés…)
+  character.js          Avatar humanoïde articulé (joueur + PNJ)
   locations.js          Les 9 lieux + bâtiments par époque
   eras.js               Configuration des 7 époques
-  player.js             Contrôleur 1ère/3ème personne
-  npcs.js               PNJ, dialogues, routines
+  player.js             Contrôleur 3ème personne + collisions
+  npcs.js               PNJ, dialogues, apparences par époque
   quests.js             Système de quêtes
   inventory.js          Sac et objets
   ui.js                 HUD, panneaux, journal
@@ -93,6 +97,24 @@ src/
   input.js              Clavier / souris
   state.js              État global et sauvegarde
 ```
+
+## Nouveautés de cette itération
+
+- **Collisions** contre les bâtiments, arbres et éléments de décor (grille
+  spatiale pour rester performant).
+- **Avatar articulé** : tête, bras, jambes animés, sac d'explorateur,
+  proportions réalistes par rapport aux bâtiments (~1,8 m).
+- **Textures procédurales** : pierre de taille avec mortier et mousse,
+  tuiles d'argile cuite, crépi rétais, chaume, bois, pavés, terre battue,
+  asphalte (piste cyclable), feuillage, écorce, herbe.
+- **Bâtiments réalistes** : portes, fenêtres à volets, cheminées, toits à
+  deux pentes, créneaux, clochers, bunkers.
+- **Chemins** reliant les villages, au revêtement propre à chaque époque
+  (terre, pavés romains/médiévaux, asphalte contemporain).
+- **Éléments d'époque** : menhirs et feu de camp (Préhistoire), amphores
+  (Antiquité), charrette et barrières (Moyen Âge), canons (XVIIᵉ/XIXᵉ),
+  bunkers et sacs de sable (WWII), bancs, panneaux et arceaux à vélo
+  (contemporain).
 
 ## Extension
 

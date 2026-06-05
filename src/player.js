@@ -1,18 +1,21 @@
-// Contrôleur joueur 3ème personne (caméra orbitale).
+// Contrôleur joueur 3ème personne (caméra orbitale) avec avatar articulé,
+// animation de marche et collisions contre le décor.
 
 import * as THREE from 'three';
 import { keys, moveVector, isRunning, isJumping, consumeMouseDelta } from './input.js';
 import { heightAt } from './world.js';
 import { state } from './state.js';
+import { buildHumanoid, animateHumanoid } from './character.js';
 
-const WALK_SPEED = 6;
-const RUN_SPEED = 12;
-const BIKE_SPEED = 18;
+const WALK_SPEED = 5;
+const RUN_SPEED = 10;
+const BIKE_SPEED = 16;
 const SWIM_SPEED = 3;
-const JUMP_V = 7;
+const JUMP_V = 6.5;
 const GRAVITY = 22;
 const CAM_DIST = 6;
-const CAM_HEIGHT = 2.4;
+const CAM_HEIGHT = 2.6;
+const BODY_RADIUS = 0.45;
 
 export class Player {
   constructor(scene, camera) {
@@ -26,18 +29,17 @@ export class Player {
     this.grounded = true;
     this.swimming = false;
     this.onBike = state.player.onBike;
+    this.walkPhase = 0;
+    this.world = null;              // injecté par main.js pour les collisions
 
-    // Avatar simple : corps + tête
-    const bodyMat = new THREE.MeshLambertMaterial({ color: 0x4a6a8a });
-    const skinMat = new THREE.MeshLambertMaterial({ color: 0xe4b896 });
-    this.body = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1.2, 4, 8), bodyMat);
-    this.body.position.y = 1.0;
-    this.body.castShadow = true;
-    this.head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 10), skinMat);
-    this.head.position.y = 1.95;
-    this.head.castShadow = true;
-    this.group.add(this.body);
-    this.group.add(this.head);
+    // Avatar humanoïde (explorateur contemporain)
+    const av = buildHumanoid({
+      shirt: 0x2f6f4f, pants: 0x3a3f4a, skin: 0xe6b48f,
+      hair: 0x2a1d12, backpack: true, hat: 'cap', accent: 0xb5462f,
+    });
+    this.avatar = av.group;
+    this.parts = av.parts;
+    this.group.add(this.avatar);
 
     // Vélo (caché par défaut)
     this.bike = this.buildBike();
@@ -50,17 +52,22 @@ export class Player {
 
   buildBike() {
     const g = new THREE.Group();
-    const tubeMat = new THREE.MeshLambertMaterial({ color: 0x222222 });
-    const wheelMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
-    const wheelGeo = new THREE.TorusGeometry(0.45, 0.06, 6, 16);
-    const w1 = new THREE.Mesh(wheelGeo, wheelMat);
-    w1.rotation.y = Math.PI / 2; w1.position.set(0, 0.45, 0.7); g.add(w1);
-    const w2 = new THREE.Mesh(wheelGeo, wheelMat);
-    w2.rotation.y = Math.PI / 2; w2.position.set(0, 0.45, -0.7); g.add(w2);
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 1.4), tubeMat);
-    frame.position.set(0, 0.7, 0); g.add(frame);
-    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.3), tubeMat);
-    seat.position.set(0, 0.95, -0.4); g.add(seat);
+    const tubeMat = new THREE.MeshStandardMaterial({ color: 0x222428, metalness: 0.6, roughness: 0.4 });
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
+    const wheelGeo = new THREE.TorusGeometry(0.42, 0.06, 8, 18);
+    this.bikeWheelF = new THREE.Mesh(wheelGeo, wheelMat);
+    this.bikeWheelF.rotation.y = Math.PI / 2; this.bikeWheelF.position.set(0, 0.42, 0.62); g.add(this.bikeWheelF);
+    this.bikeWheelB = new THREE.Mesh(wheelGeo, wheelMat);
+    this.bikeWheelB.rotation.y = Math.PI / 2; this.bikeWheelB.position.set(0, 0.42, -0.62); g.add(this.bikeWheelB);
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 1.2), tubeMat);
+    frame.position.set(0, 0.62, 0); g.add(frame);
+    const seatPost = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.3), tubeMat);
+    seatPost.position.set(0, 0.78, -0.32); g.add(seatPost);
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.06, 0.26), new THREE.MeshStandardMaterial({ color: 0x2a2018 }));
+    seat.position.set(0, 0.92, -0.32); g.add(seat);
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.04, 0.04), tubeMat);
+    bar.position.set(0, 0.92, 0.5); g.add(bar);
+    g.children.forEach((c) => (c.castShadow = true));
     return g;
   }
 
@@ -76,10 +83,9 @@ export class Player {
     this.pitch -= dy * 0.0025 * state.options.mouseSensitivity;
     this.pitch = Math.max(-1.2, Math.min(0.9, this.pitch));
 
-    // Détermination de la vitesse / mode
+    // Mode / vitesse
     const groundH = heightAt(this.position.x, this.position.z);
-    const waterY = 0;
-    const inWater = this.position.y < waterY + 0.5 && groundH < waterY;
+    const inWater = this.position.y < 0.5 && groundH < 0;
     this.swimming = inWater;
     state.player.swimming = this.swimming;
     state.player.onBike = this.onBike;
@@ -94,7 +100,6 @@ export class Player {
     const len = Math.hypot(fwd, side) || 1;
     const fx = fwd / len, sx = side / len;
 
-    // Mouvement par rapport au regard caméra (yaw)
     const forwardX = -Math.sin(this.yaw), forwardZ = -Math.cos(this.yaw);
     const rightX = Math.cos(this.yaw), rightZ = -Math.sin(this.yaw);
     const moving = (fwd !== 0 || side !== 0);
@@ -105,20 +110,18 @@ export class Player {
       if (isRunning() && !this.swimming && !this.onBike) {
         state.player.stamina = Math.max(0, state.player.stamina - 8 * dt);
       }
-      // Rotation du corps vers la direction de déplacement
       const targetYaw = Math.atan2(this.velocity.x, this.velocity.z);
       const diff = ((targetYaw - this.group.rotation.y + Math.PI) % (Math.PI * 2)) - Math.PI;
-      this.group.rotation.y += diff * Math.min(1, dt * 8);
+      this.group.rotation.y += diff * Math.min(1, dt * 10);
     } else {
       this.velocity.x *= 0.7;
       this.velocity.z *= 0.7;
       state.player.stamina = Math.min(100, state.player.stamina + 12 * dt);
     }
 
-    // Saut + gravité
+    // Saut / gravité
     if (this.swimming) {
-      this.velocity.y = isJumping() ? 3 : -1.5;
-      this.velocity.y *= 0.8;
+      this.velocity.y = (isJumping() ? 3 : -1.5) * 0.8;
     } else if (this.grounded && isJumping()) {
       this.velocity.y = JUMP_V;
       this.grounded = false;
@@ -126,17 +129,23 @@ export class Player {
       this.velocity.y -= GRAVITY * dt;
     }
 
-    // Intégration
-    this.position.x += this.velocity.x * dt;
+    // Intégration horizontale + collisions
+    let nx = this.position.x + this.velocity.x * dt;
+    let nz = this.position.z + this.velocity.z * dt;
+    if (this.world) {
+      const r = this.world.resolveCollision(nx, nz, BODY_RADIUS);
+      nx = r.x; nz = r.z;
+    }
+    this.position.x = nx;
+    this.position.z = nz;
     this.position.y += this.velocity.y * dt;
-    this.position.z += this.velocity.z * dt;
 
     // Limites du monde
     const lim = 240;
     this.position.x = Math.max(-lim, Math.min(lim, this.position.x));
     this.position.z = Math.max(-lim * 0.4, Math.min(lim * 0.4, this.position.z));
 
-    // Collision sol
+    // Sol
     const targetGroundH = heightAt(this.position.x, this.position.z);
     const floorY = Math.max(targetGroundH, -2);
     if (this.position.y <= floorY) {
@@ -147,47 +156,39 @@ export class Player {
       this.grounded = false;
     }
 
-    // Animation simple (bobbing)
-    if (moving && this.grounded && !this.onBike) {
-      const t = performance.now() * 0.01;
-      this.body.position.y = 1.0 + Math.sin(t * speed * 0.2) * 0.06;
-      this.head.position.y = 1.95 + Math.sin(t * speed * 0.2) * 0.05;
-    } else if (this.onBike) {
-      this.body.position.y = 1.0;
-      this.head.position.y = 1.95;
-    }
+    // Animation de l'avatar
+    const horizSpeed = Math.hypot(this.velocity.x, this.velocity.z);
+    const intensity = Math.min(1, horizSpeed / RUN_SPEED + (this.onBike ? 0.4 : 0));
+    this.walkPhase += dt * (4 + horizSpeed * 1.1);
+    animateHumanoid(this.parts, this.walkPhase, moving ? Math.max(0.3, intensity) : 0, dt, this.onBike);
 
+    // Position assise sur le vélo
     this.bike.visible = this.onBike;
+    this.avatar.position.y = this.onBike ? 0.32 : 0;
     if (this.onBike) {
-      // Rotation des roues
-      const t = performance.now() * 0.01;
-      this.bike.children[0].rotation.x = t * speed * 0.2;
-      this.bike.children[1].rotation.x = t * speed * 0.2;
+      const spin = this.walkPhase * 1.6;
+      this.bikeWheelF.rotation.x = spin;
+      this.bikeWheelB.rotation.x = spin;
     }
 
     this.group.position.copy(this.position);
 
-    // Caméra orbitale 3ème personne
-    const camOffsetX = -Math.sin(this.yaw) * Math.cos(this.pitch) * CAM_DIST;
-    const camOffsetZ = -Math.cos(this.yaw) * Math.cos(this.pitch) * CAM_DIST;
-    const camOffsetY = Math.sin(this.pitch) * CAM_DIST + CAM_HEIGHT;
-    this.camera.position.set(
-      this.position.x - camOffsetX,
-      this.position.y + camOffsetY,
-      this.position.z - camOffsetZ
-    );
-    this.camera.lookAt(
-      this.position.x, this.position.y + 1.6, this.position.z
-    );
+    // Caméra orbitale + anti-clipping simple
+    let camDist = CAM_DIST;
+    const camOffsetX = -Math.sin(this.yaw) * Math.cos(this.pitch) * camDist;
+    const camOffsetZ = -Math.cos(this.yaw) * Math.cos(this.pitch) * camDist;
+    const camOffsetY = Math.sin(this.pitch) * camDist + CAM_HEIGHT;
+    const camX = this.position.x - camOffsetX;
+    const camZ = this.position.z - camOffsetZ;
+    const camGround = heightAt(camX, camZ) + 1;
+    this.camera.position.set(camX, Math.max(this.position.y + camOffsetY, camGround), camZ);
+    this.camera.lookAt(this.position.x, this.position.y + 1.5, this.position.z);
 
-    // État partagé
     state.player.position = [this.position.x, this.position.y, this.position.z];
     state.player.rotation = this.yaw;
   }
 
-  toggleBike() {
-    this.onBike = !this.onBike;
-  }
+  toggleBike() { this.onBike = !this.onBike; }
 
   teleportTo(x, z) {
     this.position.x = x;

@@ -28,6 +28,8 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(
@@ -43,6 +45,7 @@ window.addEventListener('resize', () => {
 // ---------- Systèmes ----------
 const world = new World(scene);
 const player = new Player(scene, camera);
+player.world = world;               // active les collisions contre le décor
 const dayNight = new DayNight(scene, world);
 const npcs = new NPCManager(scene);
 const audio = new AudioManager();
@@ -124,13 +127,17 @@ function gameLoop(t) {
     }
   }
 
-  // Lieu courant
-  const nearest = nearestLocation(player.position.x, player.position.z, 40);
+  // Lieu courant (la ville où se déroule l'action)
+  const nearest = nearestLocation(player.position.x, player.position.z, 45);
   if (nearest !== currentLocation) {
     currentLocation = nearest;
-    if (currentLocation && !state.visitedLocations.has(currentLocation.id)) {
-      state.visitedLocations.add(currentLocation.id);
-      showToast(`Lieu découvert : ${currentLocation.name}`, 'quest');
+    if (currentLocation) {
+      if (!state.visitedLocations.has(currentLocation.id)) {
+        state.visitedLocations.add(currentLocation.id);
+        showToast(`Lieu découvert : ${currentLocation.name}`, 'quest');
+      } else {
+        showToast(`Vous arrivez à ${currentLocation.name}`, 'quest');
+      }
     }
   }
 
@@ -321,6 +328,13 @@ async function preload() {
   document.getElementById('loading').classList.add('hidden');
   document.getElementById('title-screen').classList.remove('hidden');
 }
+
+// Crochet de debug (utilisé par les tests automatisés). Sans effet sur le jeu.
+window.__dev = {
+  travelTo,
+  unlockAll: () => ERAS.forEach((e) => state.unlockedEras.add(e.id)),
+  get state() { return state; },
+};
 
 setupTitleScreen();
 preload();
