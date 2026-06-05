@@ -11,6 +11,19 @@ l'histoire de l'île.
 
 ## Lancer le jeu
 
+### En ligne (GitHub Pages)
+
+Une fois le PR fusionné dans `main` et GitHub Pages activé dans les
+paramètres du dépôt (Settings → Pages → Source : *GitHub Actions*),
+le jeu est jouable à :
+
+**https://pierrealexispozzi.github.io/Ile_de_Re/**
+
+Un workflow `.github/workflows/pages.yml` publie automatiquement le site
+à chaque push sur `main`.
+
+### En local
+
 Aucune dépendance à installer. Three.js est chargé via un import-map CDN.
 
 ```bash
