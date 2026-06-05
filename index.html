@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Les Fragments du Temps — Île de Ré</title>
+  <link rel="stylesheet" href="style.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="loading">
+    <div class="title">Les Fragments du Temps</div>
+    <div class="subtitle">Île de Ré</div>
+    <div class="progress"><div class="bar" id="loadingBar"></div></div>
+    <div class="hint" id="loadingHint">Chargement…</div>
+  </div>
+
+  <div id="title-screen" class="hidden">
+    <h1>Les Fragments du Temps</h1>
+    <h2>Île de Ré</h2>
+    <p class="lead">
+      Un artefact ancien dort sous les sables de l'île. Il relie sept époques,
+      des premiers chasseurs aux pêcheurs d'aujourd'hui. Des anomalies
+      temporelles menacent d'effacer la mémoire des Rétais. À toi de la
+      préserver.
+    </p>
+    <button id="btn-start">Commencer l'aventure</button>
+    <div class="credits">Prototype — exploration libre, 7 époques, 9 lieux</div>
+  </div>
+
+  <canvas id="game"></canvas>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div id="topbar">
+      <div class="info">
+        <span class="label">Époque</span>
+        <span id="era-name">Contemporaine</span>
+      </div>
+      <div class="info">
+        <span class="label">Lieu</span>
+        <span id="location-name">—</span>
+      </div>
+      <div class="info">
+        <span class="label">Heure</span>
+        <span id="clock">12:00</span>
+      </div>
+      <div class="info">
+        <span class="label">Météo</span>
+        <span id="weather">Clair</span>
+      </div>
+    </div>
+
+    <canvas id="minimap" width="220" height="220"></canvas>
+
+    <div id="interact-hint" class="hidden">
+      <span class="key">E</span> <span id="interact-label">Interagir</span>
+    </div>
+
+    <div id="objective">
+      <div class="label">Objectif</div>
+      <div id="objective-text">Trouve l'artefact près du Phare des Baleines.</div>
+    </div>
+
+    <div id="toast-container"></div>
+  </div>
+
+  <!-- Panels -->
+  <div id="panel-dialogue" class="panel hidden">
+    <div class="portrait" id="npc-portrait"></div>
+    <div class="content">
+      <div class="speaker" id="npc-name">—</div>
+      <div class="line" id="npc-line">—</div>
+      <div class="choices" id="npc-choices"></div>
+    </div>
+  </div>
+
+  <div id="panel-inventory" class="panel hidden">
+    <h2>Inventaire</h2>
+    <div class="grid" id="inv-grid"></div>
+    <div class="desc" id="inv-desc">Sélectionne un objet pour voir sa description.</div>
+    <button class="close" data-close>Fermer</button>
+  </div>
+
+  <div id="panel-quests" class="panel hidden">
+    <h2>Journal de quêtes</h2>
+    <div id="quest-list"></div>
+    <button class="close" data-close>Fermer</button>
+  </div>
+
+  <div id="panel-map" class="panel hidden full">
+    <h2>Carte de l'Île de Ré</h2>
+    <canvas id="bigmap" width="900" height="500"></canvas>
+    <div class="legend">
+      <span><i class="dot loc"></i>Lieux historiques</span>
+      <span><i class="dot quest"></i>Quêtes actives</span>
+      <span><i class="dot you"></i>Toi</span>
+    </div>
+    <button class="close" data-close>Fermer</button>
+  </div>
+
+  <div id="panel-era" class="panel hidden">
+    <h2>Portail temporel</h2>
+    <p>Choisis une époque vers laquelle voyager.</p>
+    <div id="era-grid"></div>
+    <button class="close" data-close>Annuler</button>
+  </div>
+
+  <div id="panel-pause" class="panel hidden">
+    <h2>Pause</h2>
+    <button id="resume">Reprendre</button>
+    <button id="save">Sauvegarder</button>
+    <button id="load">Charger</button>
+    <button id="quit">Retour au menu</button>
+  </div>
+
+  <div id="vignette"></div>
+  <div id="era-flash"></div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
