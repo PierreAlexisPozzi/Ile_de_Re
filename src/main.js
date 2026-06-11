@@ -52,15 +52,16 @@ const audio = new AudioManager();
 
 initInput(canvas);
 
-// Fragments du temps : un par époque, placés près de lieux pertinents
+// Fragments du temps : un par époque, placé dans la ville de l'époque
+// (positions choisies hors des bâtiments : place, chantier, marais…)
 const FRAGMENT_LOCATIONS = {
-  contemporaine: { id: 'fragment-1', loc: 'phare-baleines', offset: [4, 0, 4] },
-  prehistoire:   { id: 'fragment-2', loc: 'lilleau',        offset: [-3, 0, 5] },
-  antiquite:     { id: 'fragment-3', loc: 'flotte',         offset: [0, 0, -7] },
-  moyenage:      { id: 'fragment-4', loc: 'ars',            offset: [3, 0, -3] },
-  xvii:          { id: 'fragment-5', loc: 'saint-martin',   offset: [5, 0, 5] },
-  xix:           { id: 'fragment-6', loc: 'bois-plage',     offset: [-4, 0, 3] },
-  wwii:          { id: 'fragment-7', loc: 'sainte-marie',   offset: [0, 0, 6] },
+  contemporaine: { id: 'fragment-1', loc: 'phare-baleines', offset: [5, 0, -5] },
+  prehistoire:   { id: 'fragment-2', loc: 'portes',         offset: [14, 0, -6] },
+  antiquite:     { id: 'fragment-3', loc: 'sainte-marie',   offset: [-3, 0, 14] },
+  moyenage:      { id: 'fragment-4', loc: 'flotte',         offset: [20, 0, -16] },
+  xvii:          { id: 'fragment-5', loc: 'saint-martin',   offset: [26, 0, -7] },
+  xix:           { id: 'fragment-6', loc: 'ars',            offset: [-33, 0, 15] },
+  wwii:          { id: 'fragment-7', loc: 'bois-plage',     offset: [-4, 0, 18] },
 };
 
 // Group qui contient le fragment courant
@@ -127,8 +128,13 @@ function gameLoop(t) {
     }
   }
 
-  // Lieu courant (la ville où se déroule l'action)
-  const nearest = nearestLocation(player.position.x, player.position.z, 45);
+  // Lieu courant : priorité à la ville de l'époque si on est dans ses environs
+  const eraTown = LOCATIONS.find((l) => l.id === getEra(state.era).town);
+  const dTown = Math.hypot(
+    eraTown.position[0] - player.position.x,
+    eraTown.position[2] - player.position.z
+  );
+  const nearest = dTown < 55 ? eraTown : nearestLocation(player.position.x, player.position.z, 45);
   if (nearest !== currentLocation) {
     currentLocation = nearest;
     if (currentLocation) {
@@ -239,7 +245,7 @@ function handlePanelInputs() {
   }
 }
 
-function travelTo(eraId) {
+function travelTo(eraId, teleport = true) {
   closeAllPanels();
   state.era = eraId;
   eraFlash();
@@ -249,7 +255,12 @@ function travelTo(eraId) {
     npcs.loadEra(eraId, LOCATIONS);
     spawnFragment(eraId);
     audio.playAmbient(eraId);
-    showToast(`Tu voyages : ${getEra(eraId).name}`, 'era');
+    // Chaque époque se vit dans sa ville : le voyage temporel y téléporte.
+    const s = world.getSpawn();
+    if (teleport) player.teleportTo(s.x, s.z);
+    dayNight.setFocus(s.x, s.z);
+    const era = getEra(eraId);
+    showToast(`${era.name} — ${era.townName}`, 'era');
     updateObjectiveForEra(eraId);
   }, 200);
 }
@@ -292,8 +303,10 @@ function setupTitleScreen() {
   document.getElementById('load').onclick = () => {
     if (load()) {
       showToast('Partie chargée.', 'quest');
-      player.teleportTo(state.player.position[0], state.player.position[2]);
-      travelTo(state.era);
+      const [sx, , sz] = state.player.position;
+      travelTo(state.era, false);
+      // repositionne à l'endroit sauvegardé une fois le monde reconstruit
+      setTimeout(() => player.teleportTo(sx, sz), 250);
     } else {
       showToast('Aucune sauvegarde trouvée.', 'item');
     }

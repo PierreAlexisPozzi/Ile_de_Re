@@ -58,10 +58,19 @@ Un serveur statique est requis (les modules ES ne se chargent pas en `file://`).
 - **9 lieux emblématiques** : Saint-Martin-de-Ré, La Flotte, Ars-en-Ré,
   Le Bois-Plage-en-Ré, Sainte-Marie-de-Ré, Les Portes-en-Ré, Phare des
   Baleines, Fort la Prée, Réserve de Lilleau des Niges.
-- **7 époques** : Préhistoire, Antiquité romaine, Moyen Âge, XVIIᵉ siècle
-  (Vauban), XIXᵉ siècle, Seconde Guerre mondiale, Époque contemporaine.
-  Chaque époque modifie la palette, la végétation, les bâtiments, les PNJ
-  et les quêtes disponibles.
+- **7 époques = 7 villes** : chaque époque se déroule dans UNE ville de
+  l'île, reconstituée avec un plan fidèle ; le voyage temporel téléporte
+  le joueur dans la ville de l'époque :
+
+  | Époque | Ville | Points d'intérêt |
+  | ------ | ----- | ---------------- |
+  | Préhistoire | Les Portes-en-Ré | campement, dolmen, alignement de menhirs |
+  | Antiquité romaine | Sainte-Marie-de-Ré | villa à péristyle, horreum, jetée, marché |
+  | Moyen Âge | La Flotte | halles, port, abbaye des Châteliers en chantier |
+  | XVIIᵉ siècle | Saint-Martin-de-Ré | remparts Vauban en étoile, citadelle, bassin à flot |
+  | XIXᵉ siècle | Ars-en-Ré | clocher noir et blanc, marais salants, gabarres |
+  | Seconde Guerre mondiale | Le Bois-Plage-en-Ré | casemates, obstacles de plage, village occupé |
+  | Contemporaine | Phare des Baleines | grand phare, vieille tour Vauban, pistes cyclables |
 - **Cycle jour/nuit dynamique** avec soleil, lune et ciel coloré.
 - **Météo** (clair, nuageux, brume marine, pluie).
 - **Marées** : niveau de l'océan oscille au fil du temps.
@@ -100,21 +109,28 @@ src/
 
 ## Nouveautés de cette itération
 
-- **Collisions** contre les bâtiments, arbres et éléments de décor (grille
+- **Une ville par époque** : le portail temporel téléporte le joueur dans
+  la ville où se déroule l'époque ; PNJ, fragment et quêtes y résident.
+- **Plans de villes fidèles** : rues de maisons rétaises mitoyennes
+  (murs chaulés, volets verts, tuiles canal, génoises, cheminées de
+  pignon), places pavées, puits, ports reliés au bourg par une rue.
+  Saint-Martin a ses remparts en étoile percés de deux portes, sa
+  citadelle et son bassin à flot fermé par deux môles ; Ars son clocher
+  noir et blanc et ses marais salants ; La Flotte ses halles et le
+  chantier de l'abbaye (grue, échafaudages, pierres taillées).
+- **Toits à deux pentes réels** : géométrie dédiée avec pignons dans le
+  matériau du mur et pentes en tuiles — fini les toits coniques écrasés.
+- **Textures enrichies avec relief (bump mapping)** : pierre de taille,
+  tuiles, pavés, crépi, bois, terre battue ; nouvelles textures de
+  **béton banché** (bunkers) et de **volets en planches peintes**.
+- **Terrain aplani sous la ville active** (les villages rétais sont
+  plats) — le terrain, le joueur et les PNJ partagent la même hauteur.
+- **Proportions humaines** : avatar 1,80 m, portes 2,05 m, étages 2,80 m,
+  encadrements de pierre, appuis de fenêtre.
+- **Ombres mobiles** : la caméra d'ombres suit la ville active (avant,
+  seules les environs de l'origine étaient ombragés).
+- **Collisions** contre bâtiments, remparts, arbres et décor (grille
   spatiale pour rester performant).
-- **Avatar articulé** : tête, bras, jambes animés, sac d'explorateur,
-  proportions réalistes par rapport aux bâtiments (~1,8 m).
-- **Textures procédurales** : pierre de taille avec mortier et mousse,
-  tuiles d'argile cuite, crépi rétais, chaume, bois, pavés, terre battue,
-  asphalte (piste cyclable), feuillage, écorce, herbe.
-- **Bâtiments réalistes** : portes, fenêtres à volets, cheminées, toits à
-  deux pentes, créneaux, clochers, bunkers.
-- **Chemins** reliant les villages, au revêtement propre à chaque époque
-  (terre, pavés romains/médiévaux, asphalte contemporain).
-- **Éléments d'époque** : menhirs et feu de camp (Préhistoire), amphores
-  (Antiquité), charrette et barrières (Moyen Âge), canons (XVIIᵉ/XIXᵉ),
-  bunkers et sacs de sable (WWII), bancs, panneaux et arceaux à vélo
-  (contemporain).
 
 ## Extension
 

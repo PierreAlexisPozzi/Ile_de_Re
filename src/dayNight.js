@@ -11,6 +11,8 @@ export class DayNight {
   constructor(scene, world) {
     this.scene = scene;
     this.world = world;
+    // centre d'intérêt (la ville de l'époque) : ombres et soleil le suivent
+    this.focus = { x: 0, z: 0 };
 
     this.sun = new THREE.DirectionalLight(0xffe8c8, 1.2);
     this.sun.castShadow = true;
@@ -57,12 +59,12 @@ export class DayNight {
 
     const era = getEra(state.era);
 
-    this.sun.position.set(sunX * 100, sunY * 100, 30);
-    this.sun.target.position.set(0, 0, 0);
-    this.sunMesh.position.copy(this.sun.position).multiplyScalar(2);
+    this.sun.position.set(this.focus.x + sunX * 100, sunY * 100, this.focus.z + 30);
+    this.sun.target.position.set(this.focus.x, 0, this.focus.z);
+    this.sunMesh.position.set(this.focus.x + sunX * 220, sunY * 220, this.focus.z + 60);
 
-    this.moon.position.set(-sunX * 100, -sunY * 100, 30);
-    this.moonMesh.position.copy(this.moon.position).multiplyScalar(2);
+    this.moon.position.set(this.focus.x - sunX * 100, -sunY * 100, this.focus.z + 30);
+    this.moonMesh.position.set(this.focus.x - sunX * 220, -sunY * 220, this.focus.z + 60);
     this.moonMesh.visible = sunY < 0.2;
 
     // Intensités selon la hauteur du soleil
@@ -84,10 +86,10 @@ export class DayNight {
 
     this.ambient.color.lerpColors(
       new THREE.Color(0x202840),
-      new THREE.Color(0x6080a0),
+      new THREE.Color(0x9aa2a8),
       dayFactor
     );
-    this.ambient.intensity = 0.25 + 0.35 * dayFactor;
+    this.ambient.intensity = 0.25 + 0.4 * dayFactor;
 
     this.moon.intensity = 0.12 * nightFactor;
 
@@ -110,6 +112,11 @@ export class DayNight {
     if (state.weather === 'rain') fogDensity *= 1.8;
     this.fog.color.copy(skyHorizon).lerp(new THREE.Color(era.fog.color), 0.5);
     this.fog.density = fogDensity;
+  }
+
+  setFocus(x, z) {
+    this.focus.x = x;
+    this.focus.z = z;
   }
 
   getClock() {

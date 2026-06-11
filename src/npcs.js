@@ -1,9 +1,11 @@
-// PNJ. Chaque PNJ a une époque, un lieu d'origine, un dialogue et
-// éventuellement une quête à donner.
+// PNJ. Chaque PNJ vit dans la ville de son époque, à une position précise
+// (offset par rapport au centre-ville : place, rue, quai), avec un dialogue
+// et éventuellement une quête à donner.
 
 import * as THREE from 'three';
 import { heightAt } from './world.js';
 import { state } from './state.js';
+import { getEra } from './eras.js';
 import { buildHumanoid, animateHumanoid } from './character.js';
 
 // Apparence d'un PNJ selon son métier et son époque.
@@ -33,7 +35,8 @@ export const NPC_DEFS = [
     id: 'orven',
     name: 'Orven, chasseur',
     era: 'prehistoire',
-    location: 'lilleau',
+    location: 'portes',
+    offset: [4, 7],
     portrait: '🦌',
     color: 0x6a4a26,
     questId: 'q-prehistoire-chasse',
@@ -47,7 +50,8 @@ export const NPC_DEFS = [
     id: 'maela',
     name: 'Maëla, sage',
     era: 'prehistoire',
-    location: 'phare-baleines',
+    location: 'portes',
+    offset: [-5, 3],
     portrait: '🌿',
     color: 0x4a5a3a,
     dialogue: [
@@ -60,7 +64,8 @@ export const NPC_DEFS = [
     id: 'lucius',
     name: 'Lucius, marchand',
     era: 'antiquite',
-    location: 'flotte',
+    location: 'sainte-marie',
+    offset: [4, 7],
     portrait: '🏺',
     color: 0xa84a3a,
     questId: 'q-antiquite-amphores',
@@ -74,7 +79,8 @@ export const NPC_DEFS = [
     id: 'quintus',
     name: 'Quintus, saunier',
     era: 'antiquite',
-    location: 'lilleau',
+    location: 'sainte-marie',
+    offset: [-5, 8],
     portrait: '🧂',
     color: 0xd4a857,
     dialogue: [
@@ -88,6 +94,7 @@ export const NPC_DEFS = [
     name: 'Frère Anselme',
     era: 'moyenage',
     location: 'flotte',
+    offset: [16, -16],
     portrait: '⛪',
     color: 0x44402a,
     questId: 'q-moyenage-manuscrit',
@@ -101,11 +108,13 @@ export const NPC_DEFS = [
     id: 'aelis',
     name: 'Aélis, fileuse',
     era: 'moyenage',
-    location: 'ars',
+    location: 'flotte',
+    offset: [-6, 2],
     portrait: '🧵',
     color: 0x8a7a3a,
     dialogue: [
-      "Le clocher noir et blanc guide les marins, les bons comme les mauvais.",
+      "Sous les halles, on vend le poisson du matin et la laine de l'hiver.",
+      "Les moines bâtissent leur abbaye, pierre après pierre, depuis avant ma naissance.",
       "Méfie-toi des Anglais : ils rôdent sur nos côtes.",
     ],
   },
@@ -115,6 +124,7 @@ export const NPC_DEFS = [
     name: 'Sébastien Le Prestre de Vauban',
     era: 'xvii',
     location: 'saint-martin',
+    offset: [4, -9],
     portrait: '⚜',
     color: 0x4a3a26,
     questId: 'q-xvii-plans',
@@ -128,7 +138,8 @@ export const NPC_DEFS = [
     id: 'marie-louise',
     name: 'Marie-Louise, sauniere',
     era: 'xvii',
-    location: 'lilleau',
+    location: 'saint-martin',
+    offset: [-6, 8],
     portrait: '⛵',
     color: 0xc8a878,
     dialogue: [
@@ -141,7 +152,8 @@ export const NPC_DEFS = [
     id: 'capitaine-borel',
     name: 'Capitaine Borel',
     era: 'xix',
-    location: 'saint-martin',
+    location: 'ars',
+    offset: [5, 5],
     portrait: '⚓',
     color: 0x1a3a5a,
     questId: 'q-xix-baleinier',
@@ -152,14 +164,16 @@ export const NPC_DEFS = [
   },
   {
     id: 'jeanne',
-    name: 'Jeanne, vigneronne',
+    name: 'Jeanne, saunière',
     era: 'xix',
-    location: 'bois-plage',
-    portrait: '🍇',
-    color: 0x6a3a3a,
+    location: 'ars',
+    offset: [-20, 5],
+    portrait: '🧂',
+    color: 0x8a7a5a,
     dialogue: [
-      "Goûte donc ce pineau, étranger.",
-      "Le phylloxéra menace nos ceps. Que ferons-nous ?",
+      "Vois ces tas blancs dans les marais : l'or d'Ars, étranger.",
+      "Les gabarres emportent notre sel jusqu'en Scandinavie.",
+      "Le clocher noir et blanc ? C'est notre amer : il guide les marins du Fier.",
     ],
   },
   // WWII
@@ -167,13 +181,14 @@ export const NPC_DEFS = [
     id: 'leon-resistant',
     name: 'Léon, résistant',
     era: 'wwii',
-    location: 'ars',
+    location: 'bois-plage',
+    offset: [5, -9],
     portrait: '🕯',
     color: 0x3a3a3a,
     questId: 'q-wwii-messages',
     dialogue: [
       "Parle bas. Ils ont des oreilles partout.",
-      "Porte ce message à La Flotte, sans être vu.",
+      "Porte ce message à Hélène, près de l'église, sans être vu.",
       "Un jour, l'île sera libre. Tiens bon.",
     ],
   },
@@ -181,7 +196,8 @@ export const NPC_DEFS = [
     id: 'helene-infirmiere',
     name: 'Hélène, infirmière',
     era: 'wwii',
-    location: 'saint-martin',
+    location: 'bois-plage',
+    offset: [-5, -9],
     portrait: '🩹',
     color: 0xc4a8a8,
     dialogue: [
@@ -194,14 +210,15 @@ export const NPC_DEFS = [
     id: 'paul-pecheur',
     name: 'Paul, pêcheur',
     era: 'contemporaine',
-    location: 'saint-martin',
+    location: 'phare-baleines',
+    offset: [-6, 8],
     portrait: '🐟',
     color: 0x2a5a78,
     questId: 'q-contemp-anomalie',
     dialogue: [
       "L'eau a un goût étrange ce matin. Comme du sel d'autrefois.",
       "Un voyageur, hier, m'a parlé d'un \"fragment\". Toi aussi ?",
-      "Si tu vas au phare, ouvre l'œil. Il s'y passe des choses.",
+      "Au pied du phare, ouvre l'œil. Il s'y passe des choses.",
     ],
   },
   {
@@ -209,6 +226,7 @@ export const NPC_DEFS = [
     name: 'Élise, guide du patrimoine',
     era: 'contemporaine',
     location: 'phare-baleines',
+    offset: [4, 6],
     portrait: '🗝',
     color: 0x4a6a8a,
     questId: 'q-main-fragments',
@@ -220,21 +238,23 @@ export const NPC_DEFS = [
   },
   {
     id: 'marin-bois',
-    name: 'Marin, vigneron',
+    name: 'Marin, loueur de vélos',
     era: 'contemporaine',
-    location: 'bois-plage',
-    portrait: '🍷',
-    color: 0x6a3a3a,
+    location: 'phare-baleines',
+    offset: [0, 15],
+    portrait: '🚲',
+    color: 0x2a6a4a,
     dialogue: [
-      "Bienvenue au Bois-Plage. Goûte donc notre rosé.",
-      "Sept kilomètres de plage juste derrière le vignoble.",
+      "Cent kilomètres de pistes cyclables sur l'île ! Prends un vélo (touche B).",
+      "Par la piste, tu rejoins Ars en vingt minutes, à travers les marais.",
     ],
   },
   {
     id: 'sandra-touriste',
     name: 'Sandra, touriste',
     era: 'contemporaine',
-    location: 'sainte-marie',
+    location: 'phare-baleines',
+    offset: [8, 2],
     portrait: '📷',
     color: 0xc88a4a,
     dialogue: [
@@ -259,20 +279,19 @@ export class NPCManager {
     }
     this.npcs = [];
 
+    // Tous les PNJ de l'époque vivent dans la ville de l'époque,
+    // à des positions précises (place, rue, quai) hors des bâtiments.
+    const town = locations.find((l) => l.id === getEra(eraId).town);
     for (const def of NPC_DEFS) {
       if (def.era !== eraId) continue;
-      const loc = locations.find((l) => l.id === def.location);
-      if (!loc) continue;
-      // Position sur la place du village (devant les bâtiments, pas dedans)
       const seed = def.id.charCodeAt(0) + def.id.charCodeAt(1);
-      const angle = (seed % 17) / 17 * Math.PI * 2;
-      const r = 5 + (seed % 3);
-      const x = loc.position[0] + Math.cos(angle) * r;
-      const z = loc.position[2] + Math.sin(angle) * r;
+      const [ox, oz] = def.offset || [5, 5];
+      const x = town.position[0] + ox;
+      const z = town.position[2] + oz;
       const y = heightAt(x, z);
       const av = buildHumanoid(npcLook(def, eraId));
       av.group.position.set(x, y, z);
-      av.group.userData = { def, originalY: y, locId: loc.id };
+      av.group.userData = { def, originalY: y, locId: town.id };
       av.group.userData.parts = av.parts;
       av.group.userData.phase = seed;
       this.group.add(av.group);
