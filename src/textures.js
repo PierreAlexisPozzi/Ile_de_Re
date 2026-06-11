@@ -42,6 +42,18 @@ function finalize(c, repeat = 1) {
   return tex;
 }
 
+// Relief : réutilise le même canvas comme bump map (luminance = hauteur).
+// Donne du grain aux moellons, joints, tuiles et pavés sans coût mémoire notable.
+export function bumpOf(tex) {
+  if (tex.userData.bump) return tex.userData.bump;
+  const b = new THREE.CanvasTexture(tex.image);
+  b.wrapS = b.wrapT = THREE.RepeatWrapping;
+  b.repeat.copy(tex.repeat);
+  b.anisotropy = 4;
+  tex.userData.bump = b;
+  return b;
+}
+
 // ---- Pierre de taille (moellons + joints de mortier) ----
 export function stoneTexture(base = 0xcabfa6, repeat = 1, mossy = false) {
   const key = `stone-${base}-${repeat}-${mossy}`;
@@ -342,6 +354,60 @@ export function barkTexture(repeat = 1) {
     ctx.bezierCurveTo(x + (Math.random() - 0.5) * 8, size * 0.5, x + (Math.random() - 0.5) * 8, size * 0.5, x, size);
     ctx.stroke();
   }
+  const tex = finalize(c, repeat);
+  cache.set(key, tex);
+  return tex;
+}
+
+// ---- Béton banché (bunkers du Mur de l'Atlantique) ----
+export function concreteTexture(repeat = 1) {
+  const key = `concrete-${repeat}`;
+  if (cache.has(key)) return cache.get(key);
+  const size = 256, c = canvas(size), ctx = c.getContext('2d');
+  ctx.fillStyle = '#8d8d85';
+  ctx.fillRect(0, 0, size, size);
+  // lignes horizontales des planches de coffrage
+  for (let y = 0; y < size; y += 22) {
+    ctx.strokeStyle = `rgba(60,60,55,${0.25 + Math.random() * 0.2})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(size, y); ctx.stroke();
+    ctx.strokeStyle = 'rgba(200,200,190,0.12)';
+    ctx.beginPath(); ctx.moveTo(0, y + 2); ctx.lineTo(size, y + 2); ctx.stroke();
+  }
+  // coulures et taches d'humidité
+  for (let i = 0; i < 16; i++) {
+    const x = Math.random() * size, y = Math.random() * size;
+    const grad = ctx.createLinearGradient(x, y, x, y + 30 + Math.random() * 60);
+    grad.addColorStop(0, 'rgba(55,60,50,0.25)');
+    grad.addColorStop(1, 'rgba(55,60,50,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x - 3, y, 6 + Math.random() * 8, 30 + Math.random() * 60);
+  }
+  noiseOverlay(ctx, size, 0.1);
+  const tex = finalize(c, repeat);
+  cache.set(key, tex);
+  return tex;
+}
+
+// ---- Volet en planches peintes (vert rétais, gris, etc.) ----
+export function shutterTexture(base = 0x3f7f5f, repeat = 1) {
+  const key = `shutter-${base}-${repeat}`;
+  if (cache.has(key)) return cache.get(key);
+  const size = 64, c = canvas(size), ctx = c.getContext('2d');
+  ctx.fillStyle = lerpColor(base, 0x000000, 0.1);
+  ctx.fillRect(0, 0, size, size);
+  const planks = 4, pw = size / planks;
+  for (let p = 0; p < planks; p++) {
+    ctx.fillStyle = lerpColor(base, p % 2 ? 0xffffff : 0x000000, 0.08 + Math.random() * 0.06);
+    ctx.fillRect(p * pw + 1, 0, pw - 2, size);
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath(); ctx.moveTo(p * pw, 0); ctx.lineTo(p * pw, size); ctx.stroke();
+  }
+  // traverses en Z
+  ctx.fillStyle = lerpColor(base, 0x000000, 0.2);
+  ctx.fillRect(0, 6, size, 5);
+  ctx.fillRect(0, size - 11, size, 5);
+  noiseOverlay(ctx, size, 0.08);
   const tex = finalize(c, repeat);
   cache.set(key, tex);
   return tex;
