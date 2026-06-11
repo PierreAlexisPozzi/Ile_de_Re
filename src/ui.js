@@ -251,6 +251,14 @@ function drawMap(ctx, W, H, playerPos, withLabels) {
     ctx.beginPath();
     ctx.arc(x, y, 6, 0, Math.PI * 2);
     ctx.fill();
+    // ville de l'époque active : anneau doré
+    if (loc.id === getEra(state.era).town) {
+      ctx.strokeStyle = '#ffe9a8';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(x, y, 10, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     if (withLabels) {
       ctx.fillStyle = '#e8e4d8';
       ctx.font = '12px serif';
@@ -289,7 +297,7 @@ export function openEraPanel(onSelect) {
     if (state.era === era.id) card.classList.add('current');
     card.innerHTML = `
       <div class="name">${era.icon} ${era.name}</div>
-      <div class="years">${era.years}</div>
+      <div class="years">${era.years} · 📍 ${era.townName}</div>
       <div class="blurb">${era.blurb}</div>
     `;
     card.onclick = () => {
