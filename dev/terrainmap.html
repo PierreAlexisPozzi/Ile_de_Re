@@ -1,0 +1,30 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Relief des villes</title>
+<script type="importmap">{ "imports": { "three": "../vendor/three.module.js" } }</script>
+<style>body{background:#222;margin:0;display:flex;flex-wrap:wrap;gap:6px;font:12px sans-serif;color:#ddd}div{text-align:center}</style></head><body>
+<script type="module">
+import { rawHeight } from '../src/world/terrain.js';
+import { LOCATIONS } from '../src/world/locations.js';
+const R = 70, S = 3;
+for (const l of LOCATIONS) {
+  if (l.id === 'lilleau' || l.id === 'fort-la-pree') continue;
+  const c = document.createElement('canvas'); c.width = c.height = R * 2 * S;
+  const ctx = c.getContext('2d');
+  const [cx, , cz] = l.position;
+  for (let j = -R; j < R; j++) for (let i = -R; i < R; i++) {
+    const h = rawHeight(cx + i, cz + j);
+    let col = h < 0 ? `rgb(30,${70 + Math.max(-40, h * 10)},${120 + h * 10})` : h < 0.6 ? '#d8c890' : `rgb(${60 + h * 25},${110 + h * 18},${50 + h * 10})`;
+    ctx.fillStyle = col; ctx.fillRect((i + R) * S, (j + R) * S, S, S);
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  for (let k = -R; k <= R; k += 10) {
+    ctx.beginPath(); ctx.moveTo((k + R) * S, 0); ctx.lineTo((k + R) * S, R * 2 * S); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, (k + R) * S); ctx.lineTo(R * 2 * S, (k + R) * S); ctx.stroke();
+  }
+  ctx.strokeStyle = '#f00'; ctx.beginPath(); ctx.arc(R * S, R * S, 6, 0, 7); ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.font = '14px sans-serif';
+  for (let k = -60; k <= 60; k += 20) { ctx.fillText(k, (k + R) * S + 2, 12); ctx.fillText(k, 2, (k + R) * S - 2); }
+  const d = document.createElement('div'); d.append(c, document.createElement('br'), l.name + ` (${cx},${cz}) h0=${rawHeight(cx,cz).toFixed(2)}`);
+  document.body.appendChild(d);
+}
+window.__ready = true;
+</script></body></html>

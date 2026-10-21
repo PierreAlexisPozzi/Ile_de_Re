@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Enseignes et affiches</title>
+<link rel="stylesheet" href="../fonts/fonts.css">
+<style>body{background:#333;margin:0;padding:10px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start}canvas{max-width:250px;height:auto;box-shadow:0 2px 6px #000}</style>
+<script type="importmap">{ "imports": { "three": "../vendor/three.module.js" } }</script>
+</head><body>
+<script type="module">
+import { signCanvas, hangingCanvas, posterCanvas, loadFonts } from '../src/gfx/signs.js';
+await loadFonts();
+const add = (c) => document.body.appendChild(c);
+add(signCanvas({ text: 'TABERNA', sub: 'VINVM · GARVM · PANIS', style: 'roman', icon: 'amphora' }));
+add(signCanvas({ text: 'Au Bon Port', sub: 'Taverne', style: 'gothic', icon: 'ship' }));
+add(signCanvas({ text: 'Horlogerie', sub: 'Ambroise Lenoir, maître horloger', style: 'carved', icon: 'clock' }));
+add(signCanvas({ text: 'ÉPICERIE · MERCERIE', sub: 'Vve Augustine Moinard', style: 'fat', bg: '#e8dcc0', fg: '#2a3a5a' }));
+add(signCanvas({ text: 'MAIRIE', style: 'enamel' }));
+add(signCanvas({ text: 'Café des Baleines', sub: 'Glaces · Crêpes · Terrasse', style: 'modern', bg: '#1e4a6a', icon: 'coffee' }));
+add(signCanvas({ text: 'Boulangerie', sub: 'Marcel Brunet', style: 'painted', bg: '#5a2a22', icon: 'bread' }));
+add(hangingCanvas({ icon: 'bread' }));
+add(hangingCanvas({ icon: 'key', bg: '#2a3a4a', style: 'iron' }));
+add(hangingCanvas({ icon: 'anvil', text: 'Forge' }));
+add(posterCanvas({ kind: 'ordonnance', title: 'Ordonnance sur les fortifications', body: "Il est ordonné à tous les habitants de l'Isle de Ré de prêter main-forte aux travaux de la citadelle et de l'enceinte de Saint-Martin, selon les plans du sieur de Vauban, commissaire général des fortifications.", footer: 'Fait à Saint-Germain-en-Laye, le 12 avril 1681. LOUIS.' }));
+add(posterCanvas({ kind: 'avis', title: 'COUVRE-FEU', body: "La circulation est interdite de 22 heures à 6 heures du matin. L'accès aux plages et aux dunes est strictement interdit : zone côtière minée.", footer: 'Le Bois-Plage, le 1er mars 1943.' }));
+add(posterCanvas({ kind: 'tract', title: "L'île n'oublie pas", body: 'Écoutez Radio Londres. Cachez ceux qui fuient. Le jour viendra.', footer: 'VIVE LA FRANCE LIBRE' }));
+add(posterCanvas({ kind: 'programma', title: 'L · POMPEIVM · VARRONEM', body: 'AED · O · V · F · SALINATORES · ROG' }));
+add(posterCanvas({ kind: 'proclamation', title: 'Par ordre du sire de Mauléon', body: "Que nul ne pêche ni ne vende poisson avant la cloche de prime. Que chaque feu fournisse un homme au guet des murailles.", footer: "Donné à La Flotte, l'an de grâce 1190" }));
+add(posterCanvas({ kind: 'affiche19', header: 'Compagnie des Bateaux à Vapeur', title: 'LA ROCHELLE ⇄ ARS', icon: 'ship', body: 'Départs quotidiens à 7 heures et à 15 heures. Passagers, sel, vins et marchandises.', footer: 'Traversée : 1 franc 50' }));
+add(posterCanvas({ kind: 'tourism', header: 'Île de Ré', title: 'FÊTE DU SEL', icon: 'salt', body: 'Démonstrations de récolte, marché, musique', footer: 'Ars-en-Ré · 15 août', bg: '#2a7ab0', bg2: '#f0c060' }));
+add(posterCanvas({ kind: 'hide', motifs: ['deer', 'spiral', 'hand'] }));
+window.__ready = true;
+</script></body></html>

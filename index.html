@@ -4,125 +4,110 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Les Fragments du Temps — Île de Ré</title>
+  <meta name="description" content="Jeu d'exploration et d'aventure à travers sept époques de l'Île de Ré." />
+  <link rel="stylesheet" href="fonts/fonts.css" />
   <link rel="stylesheet" href="style.css" />
   <script type="importmap">
-  {
-    "imports": {
-      "three": "./vendor/three.module.js"
-    }
-  }
+  { "imports": { "three": "./vendor/three.module.js" } }
   </script>
 </head>
 <body>
-  <div id="loading">
-    <div class="title">Les Fragments du Temps</div>
-    <div class="subtitle">Île de Ré</div>
-    <div class="progress"><div class="bar" id="loadingBar"></div></div>
-    <div class="hint" id="loadingHint">Chargement…</div>
-  </div>
-
-  <div id="title-screen" class="hidden">
-    <h1>Les Fragments du Temps</h1>
-    <h2>Île de Ré</h2>
-    <p class="lead">
-      Un artefact ancien dort sous les sables de l'île. Il relie sept époques,
-      des premiers chasseurs aux pêcheurs d'aujourd'hui — et chaque époque
-      te transporte dans une ville de l'île, des Portes-en-Ré à Saint-Martin.
-      Des anomalies temporelles menacent d'effacer la mémoire des Rétais.
-      À toi de la préserver.
-    </p>
-    <button id="btn-start">Commencer l'aventure</button>
-    <div class="credits">Prototype — exploration libre, 7 époques, 7 villes reconstituées</div>
-  </div>
-
   <canvas id="game"></canvas>
+  <div id="world-labels"></div>
+
+  <!-- Chargement -->
+  <div id="loading">
+    <div class="logo">Les Fragments du Temps</div>
+    <div class="sub">Île de Ré</div>
+    <div class="progress"><div class="bar" id="loading-bar"></div></div>
+    <div class="hint" id="loading-hint">Chargement…</div>
+  </div>
+
+  <!-- Écran titre -->
+  <div id="title" class="hidden">
+    <div class="title-inner">
+      <div class="logo">Les Fragments du Temps</div>
+      <div class="sub">Une aventure à travers sept époques de l'Île de Ré</div>
+      <p class="lead">
+        Sous la pointe des Baleines dort l'Horloge des Marées, un mécanisme qui garde
+        la mémoire de l'île. Quelqu'un l'a brisée : ses sept fragments sont dispersés
+        dans le temps, et le passé commence à s'effacer.
+      </p>
+      <div id="title-menu" class="menu">
+        <button id="btn-new" class="primary">Nouvelle partie</button>
+        <button id="btn-continue" class="hidden">Continuer</button>
+        <button id="btn-help">Commandes</button>
+      </div>
+      <div id="avatar-pick" class="hidden">
+        <h3>Qui part à l'aventure ?</h3>
+        <div class="avatars">
+          <button class="avatar" data-avatar="explorer"><img alt="" /><b>Sacha</b><span>explorateur, veste de terrain</span></button>
+          <button class="avatar" data-avatar="exploratrice"><img alt="" /><b>Sacha</b><span>exploratrice, veste canard</span></button>
+          <button class="avatar" data-avatar="aventurier"><img alt="" /><b>Sacha</b><span>aventurier, veste de cuir</span></button>
+        </div>
+        <button id="btn-back" class="small">Retour</button>
+      </div>
+      <div class="credits">Exploration libre · 7 époques · 7 villes · plus de 70 quêtes · 2 fins</div>
+    </div>
+  </div>
 
   <!-- HUD -->
   <div id="hud" class="hidden">
-    <div id="topbar">
-      <div class="info">
-        <span class="label">Époque</span>
-        <span id="era-name">Contemporaine</span>
-      </div>
-      <div class="info">
-        <span class="label">Lieu</span>
-        <span id="location-name">—</span>
-      </div>
-      <div class="info">
-        <span class="label">Heure</span>
-        <span id="clock">12:00</span>
-      </div>
-      <div class="info">
-        <span class="label">Météo</span>
-        <span id="weather">Clair</span>
-      </div>
+    <div id="hud-era"><span id="era-icon"></span><div><b id="era-name"></b><span id="era-years"></span></div></div>
+    <div id="hud-place"></div>
+    <div id="compass"><div id="compass-strip"></div><div id="compass-goal"></div><div class="tick"></div></div>
+    <div id="hud-right">
+      <div id="hud-clock"></div>
+      <div id="hud-weather"></div>
+      <div id="hud-money"></div>
     </div>
-
-    <canvas id="minimap" width="220" height="220"></canvas>
-
-    <div id="interact-hint" class="hidden">
-      <span class="key">E</span> <span id="interact-label">Interagir</span>
-    </div>
-
     <div id="objective">
-      <div class="label">Objectif</div>
-      <div id="objective-text">Trouve l'artefact près du Phare des Baleines.</div>
+      <div class="q-title" id="obj-title"></div>
+      <div class="q-step" id="obj-step"></div>
     </div>
-
-    <div id="toast-container"></div>
+    <canvas id="minimap" width="200" height="200"></canvas>
+    <div id="stamina"><div id="stamina-bar"></div></div>
+    <div id="mode-icon"></div>
+    <div id="hint" class="hidden"><kbd>E</kbd><span id="hint-label"></span></div>
+    <div id="action-bar" class="hidden"><div id="action-fill"></div></div>
+    <div id="keys-help">E interagir · Tab sac · J journal · C carnet · M carte · T portail · B vélo · Échap pause</div>
+    <div id="toasts"></div>
   </div>
 
-  <!-- Panels -->
-  <div id="panel-dialogue" class="panel hidden">
-    <div class="portrait" id="npc-portrait"></div>
-    <div class="content">
-      <div class="speaker" id="npc-name">—</div>
-      <div class="line" id="npc-line">—</div>
-      <div class="choices" id="npc-choices"></div>
+  <!-- Dialogue -->
+  <div id="dialogue" class="hidden">
+    <div class="portrait"><img id="dlg-portrait" alt="" /></div>
+    <div class="body">
+      <div class="who"><b id="dlg-name"></b><span id="dlg-role"></span></div>
+      <div class="text" id="dlg-text"></div>
+      <div class="choices" id="dlg-choices"></div>
+      <div class="more" id="dlg-more">▸ Espace / clic pour continuer</div>
     </div>
   </div>
 
-  <div id="panel-inventory" class="panel hidden">
-    <h2>Inventaire</h2>
-    <div class="grid" id="inv-grid"></div>
-    <div class="desc" id="inv-desc">Sélectionne un objet pour voir sa description.</div>
-    <button class="close" data-close>Fermer</button>
-  </div>
-
-  <div id="panel-quests" class="panel hidden">
-    <h2>Journal de quêtes</h2>
-    <div id="quest-list"></div>
-    <button class="close" data-close>Fermer</button>
-  </div>
-
-  <div id="panel-map" class="panel hidden full">
-    <h2>Carte de l'Île de Ré</h2>
-    <canvas id="bigmap" width="900" height="500"></canvas>
-    <div class="legend">
-      <span><i class="dot loc"></i>Lieux historiques</span>
-      <span><i class="dot quest"></i>Quêtes actives</span>
-      <span><i class="dot you"></i>Toi</span>
+  <!-- Panneaux -->
+  <div id="panels">
+    <div id="panel" class="panel hidden">
+      <div class="panel-head"><h2 id="panel-title"></h2><button class="close" id="panel-close">✕</button></div>
+      <div class="panel-tabs" id="panel-tabs"></div>
+      <div class="panel-body" id="panel-body"></div>
     </div>
-    <button class="close" data-close>Fermer</button>
   </div>
 
-  <div id="panel-era" class="panel hidden">
-    <h2>Portail temporel</h2>
-    <p>Choisis une époque vers laquelle voyager.</p>
-    <div id="era-grid"></div>
-    <button class="close" data-close>Annuler</button>
-  </div>
+  <div id="narration" class="hidden"><div class="n-title" id="narr-title"></div><div class="n-text" id="narr-text"></div><div class="n-more">Espace pour continuer</div></div>
 
-  <div id="panel-pause" class="panel hidden">
-    <h2>Pause</h2>
-    <button id="resume">Reprendre</button>
-    <button id="save">Sauvegarder</button>
-    <button id="load">Charger</button>
-    <button id="quit">Retour au menu</button>
+  <!-- Cinématique -->
+  <div id="cine" class="hidden">
+    <div class="bar top"></div><div class="bar bottom"></div>
+    <div id="cine-title"></div>
+    <div id="cine-caption"></div>
+    <div id="cine-skip">Échap : passer</div>
   </div>
-
-  <div id="vignette"></div>
+  <div id="credits" class="hidden"><div id="credits-roll"></div></div>
+  <div id="fade"></div>
   <div id="era-flash"></div>
+  <div id="photo-flash"></div>
+  <div id="vignette"></div>
 
   <script type="module" src="src/main.js"></script>
 </body>
