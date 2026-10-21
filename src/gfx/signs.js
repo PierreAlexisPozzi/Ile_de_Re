@@ -333,6 +333,35 @@ export const ICONS = {
     ctx.fillRect(x - s * 0.2, y + s * 0.05, s * 0.4, s * 0.06);
     ctx.beginPath(); ctx.moveTo(x - s * 0.08, y + s * 0.11); ctx.lineTo(x + s * 0.08, y + s * 0.11); ctx.lineTo(x, y + s * 0.35); ctx.closePath(); ctx.fill();
   },
+  // carotte des débits de tabac (losange rouge allongé)
+  carotte(ctx, x, y, s, c = '#b8241e') {
+    ctx.fillStyle = c;
+    ctx.beginPath(); ctx.moveTo(x, y - s * 0.42); ctx.lineTo(x + s * 0.16, y); ctx.lineTo(x, y + s * 0.42); ctx.lineTo(x - s * 0.16, y); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#e8c860'; ctx.lineWidth = s * 0.02; ctx.stroke();
+    ctx.fillStyle = '#f4ead0'; ctx.font = `700 ${Math.round(s * 0.07)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    'TABAC'.split('').forEach((ch, i) => ctx.fillText(ch, x, y - s * 0.17 + i * s * 0.085));
+  },
+  // chambre photographique sur trépied
+  camera(ctx, x, y, s, c = '#3a2a1a') {
+    ctx.fillStyle = c;
+    ctx.fillRect(x - s * 0.22, y - s * 0.3, s * 0.3, s * 0.24);
+    ctx.fillStyle = '#1a1a1a';
+    ctx.beginPath(); ctx.moveTo(x + s * 0.08, y - s * 0.26); ctx.lineTo(x + s * 0.22, y - s * 0.22); ctx.lineTo(x + s * 0.22, y - s * 0.14); ctx.lineTo(x + s * 0.08, y - s * 0.1); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#c8a050'; ctx.beginPath(); ctx.arc(x + s * 0.24, y - s * 0.18, s * 0.04, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = c; ctx.lineWidth = s * 0.03;
+    for (const dx of [-0.2, 0, 0.18]) { ctx.beginPath(); ctx.moveTo(x - s * 0.06, y - s * 0.06); ctx.lineTo(x + dx * s, y + s * 0.4); ctx.stroke(); }
+  },
+  // bateau à vapeur à roues
+  steamer(ctx, x, y, s, c = '#1e1e24') {
+    ctx.fillStyle = c;
+    ctx.beginPath(); ctx.moveTo(x - s * 0.42, y + s * 0.05); ctx.lineTo(x + s * 0.42, y + s * 0.05); ctx.lineTo(x + s * 0.34, y + s * 0.2); ctx.lineTo(x - s * 0.36, y + s * 0.2); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#f0ece2'; ctx.fillRect(x - s * 0.25, y - s * 0.06, s * 0.4, s * 0.11);
+    ctx.fillStyle = '#b8241e'; ctx.fillRect(x - s * 0.05, y - s * 0.34, s * 0.09, s * 0.28);
+    ctx.fillStyle = c; ctx.fillRect(x - s * 0.05, y - s * 0.36, s * 0.09, s * 0.05);
+    ctx.fillStyle = 'rgba(80,80,80,0.6)';
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(x + s * (0.06 + i * 0.1), y - s * (0.42 + i * 0.05), s * (0.05 + i * 0.02), 0, Math.PI * 2); ctx.fill(); }
+    ctx.strokeStyle = c; ctx.lineWidth = s * 0.025; ctx.beginPath(); ctx.arc(x + s * 0.02, y + s * 0.04, s * 0.13, Math.PI, 0); ctx.stroke();
+  },
   lion(ctx, x, y, s, c = '#e0b040') {
     ctx.fillStyle = c;
     ctx.beginPath(); ctx.ellipse(x - s * 0.05, y + s * 0.02, s * 0.25, s * 0.1, 0, 0, Math.PI * 2); ctx.fill();

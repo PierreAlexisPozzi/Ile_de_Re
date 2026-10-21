@@ -14,11 +14,25 @@ export const RIDDLES = {};
 export const EXTRAS = {};      // figurants par époque
 export const ERA_HOOKS = {};   // { onEnter(api) } par époque
 
+export const shopKey = (era, id) => `${era}:${id}`;
+
+// Avertit si deux époques déclarent le même identifiant (ils s'écraseraient)
+function checkDuplicates(pack) {
+  const tables = { items: ITEMS, codex: CODEX, dialogues: DIALOGUES, riddles: RIDDLES };
+  for (const [k, table] of Object.entries(tables)) {
+    for (const id of Object.keys(pack[k] || {})) if (table[id]) console.warn(`Doublon (${k}) : « ${id} » redéfini par ${pack.era}`);
+  }
+  for (const n of pack.npcs || []) if (NPCS[n.id]) console.warn(`Doublon (PNJ) : « ${n.id} » redéfini par ${pack.era}`);
+  for (const q of pack.quests || []) if (QUESTS[q.id]) console.warn(`Doublon (quête) : « ${q.id} »`);
+}
+
 export function register(pack) {
+  checkDuplicates(pack);
   Object.assign(ITEMS, pack.items || {});
   Object.assign(CODEX, pack.codex || {});
   Object.assign(DIALOGUES, pack.dialogues || {});
-  Object.assign(SHOPS, pack.shops || {});
+  // les boutiques sont propres à chaque époque (« boulangerie » existe en 1681, 1862 et 1943)
+  for (const [id, shop] of Object.entries(pack.shops || {})) SHOPS[shopKey(pack.era, id)] = { id, era: pack.era, ...shop };
   Object.assign(RIDDLES, pack.riddles || {});
   for (const q of pack.quests || []) QUESTS[q.id] = { era: pack.era, ...q };
   for (const n of pack.npcs || []) NPCS[n.id] = { era: pack.era, ...n };

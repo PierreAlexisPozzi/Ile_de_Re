@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { state, S, save, load, hasSave } from '../core/state.js';
 import { on, emit } from '../core/events.js';
 import { pressed, pressedChar, releasePointer } from '../core/input.js';
-import { ITEMS, ITEM_TYPES, CODEX, CODEX_CATS, QUESTS, NPCS, SHOPS, RIDDLES } from '../story/registry.js';
+import { ITEMS, ITEM_TYPES, CODEX, CODEX_CATS, QUESTS, NPCS, SHOPS, RIDDLES, shopKey } from '../story/registry.js';
 import { ERAS, getEra } from '../story/eras.js';
 import { LOCATIONS, LOCATION, nearestLocation } from '../world/locations.js';
 import { heightAt, terrainColor, HALF_L } from '../world/terrain.js';
@@ -520,7 +520,7 @@ export class UI {
 
   // ---------- Boutique ----------
   openShop(id) {
-    const shop = SHOPS[id];
+    const shop = SHOPS[shopKey(state.era, id)];
     if (!shop) { this.toast('Fermé.', 'info'); return; }
     const body = this.open('shop', shop.name);
     const era = getEra(state.era);

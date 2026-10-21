@@ -6,6 +6,8 @@ import portes from './portes.js';
 import sainteMarie from './sainteMarie.js';
 import flotte from './flotte.js';
 import saintMartin from './saintMartin.js';
+import ars from './ars.js';
+import boisPlage from './boisPlage.js';
 
 const placeholder = {
   radius: 30,
@@ -20,6 +22,6 @@ export const TOWNS = {
   antiquite: sainteMarie,
   moyenage: flotte,
   xvii: saintMartin,
-  xix: placeholder,
-  wwii: placeholder,
+  xix: ars,
+  wwii: boisPlage,
 };

@@ -4,7 +4,8 @@
 
 import { state, S } from '../core/state.js';
 import { api, resolveAt } from '../systems/api.js';
-import { QUESTS, DIALOGUES, RIDDLES } from '../story/registry.js';
+import { QUESTS, DIALOGUES, RIDDLES, SHOPS, shopKey } from '../story/registry.js';
+import { addItem } from '../systems/inventory.js';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -62,7 +63,16 @@ export async function botStep() {
   if (await solveRiddle()) return 'riddle';
   if (api.player.mode === 'action') { await wait(100); return 'action'; }
   const id = state.tracked;
-  if (!id || !S.active(id)) { api.quests.trackBest(); if (!state.tracked) return 'idle'; }
+  if (!id || !S.active(id)) {
+    api.quests.trackBest();
+    if (!state.tracked) {
+      // chapitre suivant : voyage vers l'époque dont la quête d'ouverture est disponible
+      const next = Object.values(QUESTS).find((q) => q.main && q.auto && !S.started(q.id)
+        && state.unlockedEras.includes(q.era) && api.quests.requirementsMet(q));
+      if (next && next.era !== state.era) { await api.travel(next.era, { silent: true, noCine: true, force: true }); return 'travel:' + next.era; }
+      return 'idle';
+    }
+  }
   const q = QUESTS[state.tracked];
   if (q.era !== state.era && !q.anyEra) { await api.travel(q.era, { silent: true, noCine: true, force: true }); return 'travel:' + q.era; }
   const st = q.steps[state.quests[state.tracked].step];
@@ -80,7 +90,14 @@ export async function botStep() {
     }
     case 'collect': {
       const t = targets.find((x) => x.kind === 'pickup');
-      if (!t) return 'collect-nothing:' + st.item;
+      if (!t) {
+        // objet vendu en boutique : le bot « l'achète »
+        const shop = Object.values(SHOPS).find((sh) => sh.era === state.era && sh.wares?.some((w) => w.item === st.item));
+        if (!shop) return 'collect-nothing:' + st.item;
+        addItem(st.item, Math.max(1, (st.count ?? 1) - S.count(st.item)));
+        api.quests.onPickup(st.item);
+        return 'buy:' + st.item + '@' + shop.id;
+      }
       const p = resolveAt(t.at);
       goNear(p, 0.5);
       api.questWorld.refresh();
@@ -193,4 +210,32 @@ export function checkSpots() {
     }
   }
   return bad;
+}
+
+// Quêtes secondaires de l'époque courante : accepte chaque offre puis la joue
+export async function botSide(maxSteps = 400) {
+  const log = [];
+  for (const q of Object.values(QUESTS)) {
+    if (!q.giver || q.era !== state.era || S.done(q.id) || !api.quests.requirementsMet(q)) continue;
+    if (!S.started(q.id)) {
+      const n = api.npcs.get(q.giver);
+      if (!n) { log.push(`${q.id} : donneur absent (${q.giver})`); continue; }
+      goNear(n.pos);
+      api.dialogue.start(q.offer, { npc: n.id, ctx: { questId: q.id } });
+      await finishDialogue();
+    }
+    if (!S.active(q.id)) { log.push(`${q.id} : offre non acceptée`); continue; }
+    state.tracked = q.id;
+    let same = 0, last = '';
+    for (let i = 0; i < maxSteps && S.active(q.id); i++) {
+      state.tracked = q.id;
+      const r = await botStep();
+      const key = r + '|' + state.quests[q.id]?.step;
+      if (key === last) { if (++same > 6) { log.push(`${q.id} BLOQUÉ : ${r}`); break; } } else same = 0;
+      last = key;
+      await wait(20);
+    }
+    log.push(`${q.id} : ${S.done(q.id) ? 'terminée' : 'NON terminée (étape ' + state.quests[q.id]?.step + ')'}`);
+  }
+  return log;
 }

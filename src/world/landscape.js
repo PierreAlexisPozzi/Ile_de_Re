@@ -12,6 +12,7 @@ import {
 } from './terrain.js';
 import { MAT, flat, texturedMat } from './materials.js';
 import { foliageTexture, barkTexture } from '../gfx/textures.js';
+import { leafCardTexture, grassTuftTexture, leafCardsGeometry, lumpyGeometry, tuftGeometry, cardMaterial } from '../gfx/foliage.js';
 import { mulberry32, hashStr, smoothstep } from '../core/rng.js';
 import { gableRoofGeometry, box } from './builder.js';
 import { LOCATIONS } from './locations.js';
@@ -176,30 +177,71 @@ function vegetation({ world, era, group, rng, o, nearTown }) {
     if (h < 0.7) continue;
     const s = 0.5 + rng() * 0.8;
     if (m < 0.12) {
-      if (rng() < 0.55) oyats.push(compose(x, h + 0.35, z, 0.6 + rng() * 0.5, 0.7 + rng() * 0.6, 0.6 + rng() * 0.5, rng() * PI));
+      if (rng() < 0.55) oyats.push(compose(x, h - 0.05, z, 0.9 + rng() * 0.6, 0.8 + rng() * 0.6, 0.9 + rng() * 0.6, rng() * PI));
       else if (rng() < 0.35) gorse.push(compose(x, h + 0.35 * s, z, s, s * 0.7, s));
       else if (rng() < 0.25 && o >= 2) tamarisk.push(compose(x, h + 1.4 * s, z, 1.4 * s, 1.1 * s, 1.4 * s, rng() * PI));
     } else if (marshMask(x, z) > 0.45) {
       if (rng() < 0.5) salicorne.push(compose(x, h + 0.12, z, 0.5 + rng() * 0.4, 0.25, 0.5 + rng() * 0.4, rng() * PI));
-      else reeds.push(compose(x, h + 0.7, z, 0.35, 1.2 + rng() * 0.6, 0.35, rng() * PI));
+      else reeds.push(compose(x, h - 0.05, z, 0.7, 1.5 + rng() * 0.8, 0.7, rng() * PI));
     } else if (rng() < 0.35) {
       bushes.push(compose(x, h + 0.45 * s, z, s, s * 0.75, s, rng() * PI));
     }
   }
 
   const bark = texturedMat('bark', barkTexture(1), { bumpScale: 0.4 });
-  const crownMat = texturedMat(`crown-${look.trees}`, foliageTexture(look.trees === 'oak' ? 0x45652a : 0x4e6e30, 1), { bumpScale: 0.3 });
-  const pineMat = texturedMat('pinecrown', foliageTexture(0x34502a, 1), { bumpScale: 0.3 });
+  const leafBase = look.trees === 'oak' ? 0x45652a : 0x4e6e30;
+  const crownMat = texturedMat(`crown-${look.trees}`, foliageTexture(mix(leafBase, 0x000000, 0.25), 1), { bumpScale: 0.3 });
+  const pineMat = texturedMat('pinecrown', foliageTexture(0x2a4220, 1), { bumpScale: 0.3 });
   instanced(group, new THREE.CylinderGeometry(0.16, 0.26, 3, 6), bark, trunks);
-  instanced(group, new THREE.IcosahedronGeometry(1, 1), crownMat, crowns);
   instanced(group, new THREE.CylinderGeometry(0.12, 0.2, 6, 6), bark, pineTrunks);
-  instanced(group, new THREE.IcosahedronGeometry(1, 1), pineMat, pineCrowns);
-  instanced(group, new THREE.IcosahedronGeometry(1, 0), texturedMat('tamarisk', foliageTexture(0x7a8a5c, 1)), tamarisk);
-  instanced(group, new THREE.IcosahedronGeometry(1, 0), texturedMat('bush', foliageTexture(0x4a6a32, 1)), bushes);
-  instanced(group, new THREE.IcosahedronGeometry(0.7, 0), texturedMat('gorse', foliageTexture(0x8a8a2a, 1)), gorse);
-  instanced(group, new THREE.ConeGeometry(0.35, 0.9, 5), flat(0xa8ac70, 1), oyats, false);
-  instanced(group, new THREE.CylinderGeometry(0.02, 0.05, 1, 4), flat(0x8a8a50, 1), reeds, false);
+  // houppiers : noyau bosselé sombre + cartes de feuilles découpées
+  bushy(group, crowns, crownMat, leafCardTexture(leafBase, 'broad'), 'crown-' + look.trees, 12);
+  bushy(group, pineCrowns, pineMat, leafCardTexture(0x34502a, 'needle'), 'pine', 11);
+  bushy(group, tamarisk, texturedMat('tamarisk', foliageTexture(0x5a6a44, 1)), leafCardTexture(0x7a8a5c, 'needle'), 'tamarisk', 9);
+  bushy(group, bushes, texturedMat('bush', foliageTexture(0x34501f, 1)), leafCardTexture(0x4a6a32, 'broad'), 'bush', 10);
+  bushy(group, gorse, texturedMat('gorse', foliageTexture(0x4a5a1a, 1)), leafCardTexture(0x9a9020, 'needle'), 'gorse', 8);
+  // oyats, roseaux et salicornes : touffes croisées
+  tufts(group, oyats, grassTuftTexture(0xa8ac70), 'oyat');
+  tufts(group, reeds, grassTuftTexture(0x8a8a50), 'reed');
   instanced(group, new THREE.IcosahedronGeometry(0.4, 0), flat(0x8a5a4a, 1), salicorne, false);
+  grass({ group, rng, nearTown, look });
+}
+
+// Noyau + cartes de feuilles partageant les mêmes matrices d'instance
+function bushy(group, matrices, coreMat, cardTex, key, cards) {
+  if (!matrices.length) return;
+  const core = lumpyGeometry(key.length * 31, 1, 0.24).clone().scale(0.64, 0.64, 0.64);
+  instanced(group, core, coreMat, matrices);
+  instanced(group, leafCardsGeometry(cards, key.length * 17), cardMaterial(cardTex, 'cards-' + key), matrices);
+}
+
+function tufts(group, matrices, tex, key) {
+  if (!matrices.length) return;
+  const im = instanced(group, tuftGeometry(), cardMaterial(tex, 'tuft-' + key), matrices, false);
+  // plans verticaux : pas d'ombres reçues (évite l'acné d'ombre qui les noircit)
+  if (im) im.receiveShadow = false;
+}
+
+// Touffes d'herbe dans les prés autour de la ville active
+function grass({ group, rng, nearTown, look }) {
+  const list = [];
+  for (let i = 0; i < 16000 && list.length < 5200; i++) {
+    const x = (rng() - 0.5) * HALF_L * 2, z = (rng() - 0.5) * 130;
+    if (!nearTown(x, z, 150) || nearTown(x, z, 47)) continue;
+    const m = islandMask(x, z);
+    if (m < 0.14 || marshMask(x, z) > 0.4) continue;
+    const h = heightAt(x, z);
+    if (h < 0.9) continue;
+    const s = 0.45 + rng() * 0.5;
+    list.push(compose(x, h - 0.02, z, s * 1.3, s, s * 1.3, rng() * PI));
+  }
+  tufts(group, list, grassTuftTexture(look.grassTuft ?? 0x6a8a3a), 'grass');
+}
+
+function mix(a, b, t) {
+  const ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
+  const br = (b >> 16) & 255, bg = (b >> 8) & 255, bb = b & 255;
+  return (Math.round(ar + (br - ar) * t) << 16) | (Math.round(ag + (bg - ag) * t) << 8) | Math.round(ab + (bb - ab) * t);
 }
 
 // ----------------------------------------------------------------------
@@ -219,7 +261,7 @@ function vineyards({ era, group, rng, o, nearTown }) {
     }
   }
   instanced(group, new THREE.BoxGeometry(0.07, 0.7, 0.07), MAT.woodDark(), stalks, false);
-  instanced(group, new THREE.IcosahedronGeometry(1, 0),
+  instanced(group, lumpyGeometry(11, 0, 0.3),
     texturedMat(abandoned ? 'vineDry' : 'vineGreen', foliageTexture(abandoned ? 0x7a6a3a : (era.look.vineGreen ?? 0x587a30), 1), { bumpScale: 0.3 }), leaves);
 }
 

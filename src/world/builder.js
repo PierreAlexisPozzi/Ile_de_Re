@@ -9,6 +9,7 @@
 
 import * as THREE from 'three';
 import { heightAt } from './terrain.js';
+import { leafCardTexture, leafCardsGeometry, lumpyGeometry, cardMaterial } from '../gfx/foliage.js';
 import { MAT, flat, shutterMat, cached } from './materials.js';
 import { signTexture, hangingTexture, posterTexture } from '../gfx/signs.js';
 import { mulberry32, hashStr } from '../core/rng.js';
@@ -974,14 +975,21 @@ export class TownBuilder {
     trunk.rotation.z = kind === 'pine' ? 0.12 : 0;
     g.add(trunk);
     const leafCol = { oak: 0x4a6a2e, pine: 0x3a5228, tamarisk: 0x7a8a5a, fig: 0x4e7a3a, elm: 0x527030 }[kind] ?? 0x4a6a2e;
-    const lm = texturedMat(`tree-${kind}`, foliageTexture(leafCol, 1), { bumpScale: 0.3 });
+    const lm = texturedMat(`tree-${kind}-core`, foliageTexture(leafCol, 1), { bumpScale: 0.3, color: 0xb0b0b0 });
+    const cardMat = cardMaterial(leafCardTexture(leafCol, kind === 'pine' || kind === 'tamarisk' ? 'needle' : 'broad'), `tree-cards-${kind}`);
     const n = kind === 'pine' ? 3 : 4;
     for (let i = 0; i < n; i++) {
-      const c = new THREE.Mesh(new THREE.SphereGeometry((kind === 'pine' ? 1.5 : 1.3) * s, 8, 6), lm);
+      // noyau bosselé + cartes de feuilles découpées
+      const r = (kind === 'pine' ? 1.5 : 1.3) * s;
       const a = (i / n) * PI * 2;
-      c.position.set(Math.cos(a) * 0.7 * s, (trunkH + (kind === 'pine' ? 0.6 : 0.8)) * s + (i % 2) * 0.4 * s, Math.sin(a) * 0.7 * s);
-      c.scale.set(1, kind === 'pine' ? 0.5 : 0.8, 1);
-      g.add(c);
+      const cl = new THREE.Group();
+      cl.position.set(Math.cos(a) * 0.7 * s, (trunkH + (kind === 'pine' ? 0.6 : 0.8)) * s + (i % 2) * 0.4 * s, Math.sin(a) * 0.7 * s);
+      cl.scale.set(r, r * (kind === 'pine' ? 0.5 : 0.8), r);
+      const core = new THREE.Mesh(lumpyGeometry(7 + i, 1, 0.24), lm);
+      core.scale.setScalar(0.66);
+      cl.add(core);
+      cl.add(new THREE.Mesh(leafCardsGeometry(10, 5 + i), cardMat));
+      g.add(cl);
     }
     this.put(g, x, z, { col: 0.35 * s });
     return g;

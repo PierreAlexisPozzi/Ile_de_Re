@@ -224,6 +224,10 @@ export class Fauna {
       const p = findSpot((x, z) => { const h = heightAt(x, z); return h < -0.6 && h > -3; });
       if (p) this.spawn('fish', p.x, p.z, { swim: true });
     }
+    // animaux placés par la ville (ex. ânes des marais salants : points « ane… »)
+    for (const [name, s] of Object.entries(this.world.spots || {})) {
+      if (name.startsWith('ane')) this.spawn('donkey', s.x, s.z);
+    }
     if (era.id === 'prehistoire') {
       for (let i = 0; i < 4; i++) {
         const p = findSpot((x, z) => forestMask(x, z) > 0.2 && heightAt(x, z) > 1 && Math.hypot(x - tx, z - tz) > 25, 500, 80);
