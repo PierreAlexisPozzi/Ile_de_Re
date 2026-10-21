@@ -487,6 +487,7 @@ export class UI {
   // ---------- Carte ----------
   openMap(view = state.era) {
     const body = this.open('map', 'Carte de l\'Île de Ré');
+    unlockCodex('histoire-formation-ile', true);
     const here = view === state.era;
     const base = here ? this.buildMap() : renderIslandMap(MAP, ERA_GEO[view], getEra(view).look);
     const c = document.createElement('canvas');
