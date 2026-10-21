@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<title>Défilé des costumes</title>
+<style>html,body{margin:0;height:100%;background:#9bb3c4;overflow:hidden}canvas{display:block}#l{position:fixed;left:8px;top:8px;font:13px sans-serif;color:#102030}</style>
+<script type="importmap">{ "imports": { "three": "../vendor/three.module.js" } }</script>
+</head>
+<body>
+<div id="l"></div>
+<script type="module">
+import * as THREE from 'three';
+import { buildCharacter } from '../src/characters/rig.js';
+import { look, ARCHETYPES } from '../src/characters/wardrobe.js';
+
+const params = new URLSearchParams(location.search);
+const era = params.get('era') || 'xix';
+const action = params.get('action') || 'idle';
+const zoom = parseFloat(params.get('zoom') || '1');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9bb3c4);
+const cam = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 100);
+scene.add(new THREE.HemisphereLight(0xdde8f0, 0x6a5a40, 1.1));
+const sun = new THREE.DirectionalLight(0xfff0d8, 2.2);
+sun.position.set(3, 6, 5); sun.castShadow = true;
+sun.shadow.camera.left = -8; sun.shadow.camera.right = 8; sun.shadow.camera.top = 4; sun.shadow.camera.bottom = -2;
+scene.add(sun);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 20), new THREE.MeshStandardMaterial({ color: 0xb8a888 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+// porte de référence 2,05 m
+const door = new THREE.Mesh(new THREE.BoxGeometry(1, 2.05, 0.1), new THREE.MeshStandardMaterial({ color: 0x6a4a2a }));
+const names = ARCHETYPES[era];
+const chars = [];
+names.forEach((n, i) => {
+  const c = buildCharacter(look(era, n, { id: n, action }));
+  c.group.position.x = (i - (names.length - 1) / 2) * 0.9;
+  c.group.rotation.y = params.get('back') ? Math.PI : (params.get('side') ? Math.PI / 2 : 0.25);
+  c.setAction(action);
+  scene.add(c.group);
+  chars.push(c);
+});
+door.position.set(-((names.length + 1) / 2) * 0.9, 1.025, -0.3);
+scene.add(door);
+document.getElementById('l').textContent = era + ' : ' + names.join(' · ');
+const w = names.length * 0.9 + 1.5;
+const dist = (w / 2) / Math.tan((30 * Math.PI / 180) / 2) / (innerWidth / innerHeight) / zoom;
+cam.position.set(0, 1.1, Math.max(4, dist * 1.05));
+cam.lookAt(0, 0.95, 0);
+if (params.get('close')) { const k = parseInt(params.get('close')); cam.position.set(chars[k].group.position.x, 1.62, 1.1); cam.lookAt(chars[k].group.position.x, 1.55, 0); }
+let last = performance.now();
+const speed = parseFloat(params.get('speed') || '0');
+function loop(t) {
+  const dt = Math.min(0.05, (t - last) / 1000); last = t;
+  for (const c of chars) { c.speed = speed; c.update(dt); }
+  renderer.render(scene, cam);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+window.__ready = true;
+</script>
+</body>
+</html>
