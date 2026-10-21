@@ -46,11 +46,11 @@ export const SEQUENCES = {
     shots.push(orbit('moyenage', 44, 18, -0.6, 0.6, 8, '1190',
       "Les moines blancs des Châteliers bâtissent pierre après pierre ; à La Flotte, pêcheurs et moines apprennent à partager la mer." + (f.med_paix ? ' La charte lue à voix haute a ramené la paix.' : '')));
     shots.push(orbit('xvii', 70, 30, 1.0, 2.2, 9, '1681',
-      "Vauban enserre Saint-Martin d'une étoile de pierre. Plus de trois siècles plus tard, l'UNESCO la protégera."));
+      "Vauban enserre Saint-Martin d'une étoile de pierre. Plus de trois siècles plus tard, l'UNESCO la protégera." + (f.xvii_plans ? ' Ses plans, rendus à temps, sont devenus des murs.' : '')));
     shots.push(orbit('xix', 46, 20, 3.4, 4.6, 8, '1862',
       "L'or blanc d'Ars part sur les gabarres ; les sauniers ratissent, les femmes portent la quichenotte." + (f.xix_ecole ? " L'école ouvre ses portes aux enfants des marais." : '')));
     shots.push(orbit('wwii', 48, 20, 0.6, 1.8, 8, '1943',
-      "Sous l'Occupation, l'île résiste en silence. Elle sera libérée le 8 mai 1945, l'une des toutes dernières terres de France."));
+      "Sous l'Occupation, l'île résiste en silence. Elle sera libérée le 8 mai 1945, l'une des toutes dernières terres de France." + (f.wwii_carnet ? " Le carnet de croquis, caché par Hélène dans l'armoire du dispensaire, sera retrouvé après la guerre." : '')));
     shots.push({ era: 'contemporaine', orbit: { center: c, r: 90, h: 45, a0: 2.4, a1: 3.6, lookH: 10 }, dur: 9,
       title: "L'Île de Ré",
       caption: f.ending === 'gardien'
