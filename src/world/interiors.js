@@ -178,7 +178,7 @@ export class Interiors {
       : o >= 7 ? MAT.woodPale()
       : type === 'office' || type === 'school' || type === 'infirmary' ? MAT.woodPale() : MAT.wood();
     const wallMat = type === 'bunker' ? MAT.concrete()
-      : type === 'hut' ? MAT.thatch()
+      : type === 'hut' ? MAT.dirtPale()
       : type === 'church' ? MAT.stoneOld()
       : o === 2 ? MAT.plasterRoman()
       : o <= 3 ? MAT.stoneOld()
@@ -209,6 +209,13 @@ export class Interiors {
       if (type !== 'bunker' && o <= 6) for (let x = -W2 + 0.7; x < W2; x += 1.3) add(box(0.18, 0.22, D), MAT.woodDark(), x, H - 0.11, 0, { shadow: false });
     }
 
+    // hutte et blockhaus : un peu de jour par le trou de fumée ou la porte
+    if (type === 'hut' || type === 'bunker') {
+      const sl = new THREE.PointLight(0xdfe8ff, 2, 9, 1.6);
+      sl.position.set(0, H + (type === 'hut' ? 1.5 : -0.3), type === 'hut' ? 0 : D2 - 0.8);
+      g.add(sl);
+      this.windowLights.push(sl);
+    }
     // fenêtres : panneaux lumineux (jour/nuit) et lumière du dehors
     const windows = [];
     if (type !== 'bunker' && type !== 'hut') {
@@ -677,7 +684,7 @@ function furnishHut(F) {
   // foyer central
   for (let i = 0; i < 8; i++) { const a = (i / 8) * PI * 2; F.add(new THREE.DodecahedronGeometry(0.16, 0), MAT.stone(), Math.cos(a) * 0.5, 0.1, Math.sin(a) * 0.5); }
   F.fires.push(flames(F, 0, 0.05, 0));
-  F.lamp(0, 0.9, 0, 0xff8a3a, 2.4, true, 8);
+  F.lamp(0, 0.9, 0, 0xffa050, 3.2, true, 10);
   F.col(0, 0, 0.6);
   // couches de fourrures, poteries, poissons qui fument
   for (const [x, z] of [[-W2 + 0.9, -D2 + 1.0], [W2 - 0.9, -D2 + 1.0]]) {

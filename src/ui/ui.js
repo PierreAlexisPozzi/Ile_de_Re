@@ -23,7 +23,7 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 // carte globale (toute l'île et la côte de La Rochelle) et carte locale de la ville
 const MAP = { x0: -830, x1: 1080, z0: -455, z1: 445, ppu: 0.45 };
-const LMAP = { half: 150, ppu: 2 };
+const LMAP = { half: 150, ppu: 1.3 };
 
 export class UI {
   constructor() {

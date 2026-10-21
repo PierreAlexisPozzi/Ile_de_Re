@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import {
   stoneTexture, plasterTexture, roofTexture, thatchTexture, woodTexture,
-  paveTexture, dirtTexture, asphaltTexture, concreteTexture, shutterTexture, bumpOf, sandTexture,
+  paveTexture, dirtTexture, asphaltTexture, concreteTexture, shutterTexture, bumpOf, normalOf, sandTexture,
 } from '../gfx/textures.js';
 
 const cache = new Map();
@@ -17,7 +17,7 @@ export function cached(key, make) {
 
 export function texturedMat(key, tex, opts = {}) {
   return cached(key, () => new THREE.MeshStandardMaterial({
-    map: tex, bumpMap: bumpOf(tex), bumpScale: opts.bumpScale ?? 0.6,
+    map: tex, normalMap: normalOf(tex, 1.2 + (opts.bumpScale ?? 0.6) * 3), normalScale: new THREE.Vector2(1, 1),
     roughness: opts.roughness ?? 0.95, metalness: opts.metalness ?? 0,
     color: opts.color ?? 0xffffff, side: opts.side ?? THREE.FrontSide,
   }));

@@ -182,7 +182,14 @@ function gridGeometry(x0, z0, nx, nz, step) {
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(pos.length), 3));
+  g.setAttribute('aSand', new THREE.BufferAttribute(new Float32Array(pos.length / 3), 1));
   return g;
+}
+
+// Part de sable/vase d'une couleur de sol (pour le choix de la texture de détail)
+function sandiness(c) {
+  const sat = Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b);
+  return c.g > c.r * 1.08 ? 0 : Math.min(1, Math.max(0, (c.r + c.g) * 0.9 - 0.75 + (sat < 0.12 ? 0.3 : 0)));
 }
 function gridIndex(nx, nz, skip) {
   const idx = [];
@@ -196,14 +203,74 @@ function gridIndex(nx, nz, skip) {
   return idx.length > 65535 ? new THREE.Uint32BufferAttribute(idx, 1) : new THREE.Uint16BufferAttribute(idx, 1);
 }
 
+// Textures de détail en niveaux de gris (moyenne ≈ 0,5) : brins d'herbe, grain
+// et rides du sable, et une variation lente qui casse la répétition
+function detailCanvas(size, draw) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#808080';
+  ctx.fillRect(0, 0, size, size);
+  draw(ctx, size);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 8;
+  return t;
+}
+function grassDetail() {
+  return detailCanvas(256, (ctx, S) => {
+    for (let i = 0; i < 5000; i++) {
+      const x = Math.random() * S, y = Math.random() * S, l = 2 + Math.random() * 5, v = 70 + Math.random() * 120;
+      ctx.strokeStyle = `rgb(${v},${v},${v})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + (Math.random() - 0.5) * 2, y - l); ctx.stroke();
+    }
+  });
+}
+function sandDetail() {
+  return detailCanvas(256, (ctx, S) => {
+    const img = ctx.getImageData(0, 0, S, S);
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const ripple = Math.sin((y + Math.sin(x * 0.05) * 6) * 0.42) * 22;
+      const v = 128 + ripple + (Math.random() - 0.5) * 50;
+      const k = (y * S + x) * 4;
+      img.data[k] = img.data[k + 1] = img.data[k + 2] = v;
+    }
+    ctx.putImageData(img, 0, 0);
+  });
+}
+function macroDetail() {
+  return detailCanvas(128, (ctx, S) => {
+    for (let i = 0; i < 260; i++) {
+      const v = 100 + Math.random() * 56;
+      ctx.fillStyle = `rgba(${v},${v},${v},0.25)`;
+      ctx.beginPath(); ctx.arc(Math.random() * S, Math.random() * S, 6 + Math.random() * 22, 0, Math.PI * 2); ctx.fill();
+    }
+  });
+}
+
 export class Terrain {
   constructor(parent) {
     this.parent = parent;
     const geo = gridGeometry(TX0, TZ0, TNX, TNZ, TSTEP);
     geo.setIndex(gridIndex(TNX, TNZ));
-    this.mat = new THREE.MeshStandardMaterial({
-      vertexColors: true, map: grassDetailTexture(260), roughness: 1, metalness: 0,
-    });
+    this.mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.97, metalness: 0 });
+    const uni = { tGrass: { value: grassDetail() }, tSand: { value: sandDetail() }, tMacro: { value: macroDetail() } };
+    this.mat.onBeforeCompile = (sh) => {
+      Object.assign(sh.uniforms, uni);
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute float aSand;\nvarying float vSand;\nvarying vec3 vWPos;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSand = aSand;\nvWPos = (modelMatrix * vec4(position, 1.0)).xyz;');
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform sampler2D tGrass, tSand, tMacro;\nvarying float vSand;\nvarying vec3 vWPos;')
+        .replace('#include <color_fragment>', `#include <color_fragment>
+          vec2 wp = vWPos.xz;
+          float g = texture2D(tGrass, wp * 0.22).r * 0.55 + texture2D(tGrass, wp * 0.05).r * 0.45;
+          float sd = texture2D(tSand, wp * 0.09).r * 0.6 + texture2D(tSand, wp * 0.31).r * 0.4;
+          float mac = texture2D(tMacro, wp * 0.004).r * 0.55 + texture2D(tMacro, wp * 0.021).r * 0.45;
+          float det = (mix(g, sd, vSand) - 0.5) * 2.6 + 1.0;
+          diffuseColor.rgb *= det * (0.7 + 0.6 * mac);`);
+    };
     this.mesh = new THREE.Mesh(geo, this.mat);
     this.mesh.receiveShadow = true;
     parent.add(this.mesh);
@@ -211,16 +278,18 @@ export class Terrain {
   }
 
   fill(g, look) {
-    const pos = g.attributes.position, col = g.attributes.color;
+    const pos = g.attributes.position, col = g.attributes.color, sand = g.attributes.aSand;
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i);
       const h = heightAt(x, z);
-      pos.setY(i, h - (g.userData.skirt?.[i] ?? 0));
+      pos.setY(i, h);
       const c = terrainColor(x, z, h, look);
       col.setXYZ(i, c.r, c.g, c.b);
+      sand.array[i] = sandiness(c);
     }
     pos.needsUpdate = true;
     col.needsUpdate = true;
+    sand.needsUpdate = true;
     g.computeVertexNormals();
     g.computeBoundingSphere();
   }
@@ -238,9 +307,6 @@ export class Terrain {
       const nx = (i1 - i0) * TSTEP, nz = (j1 - j0) * TSTEP;
       const pg = gridGeometry(px0, pz0, nx, nz, 1);
       pg.setIndex(gridIndex(nx, nz));
-      // jupe autour de la zone fine pour masquer les raccords
-      const skirt = new Float32Array(pg.attributes.position.count);
-      pg.userData.skirt = skirt;
       this.fill(pg, look);
       this.patch = new THREE.Mesh(pg, this.mat);
       this.patch.receiveShadow = true;
@@ -258,12 +324,14 @@ export class Terrain {
     for (let i = nx; i > 0; i--) ring.push([x0 + i, z0 + nz]);
     for (let j = nz; j > 0; j--) ring.push([x0, z0 + j]);
     ring.push(ring[0]);
-    const pos = [], col = [], idx = [];
+    const pos = [], col = [], idx = [], sd = [];
     for (const [x, z] of ring) {
       const h = heightAt(x, z);
       const c = terrainColor(x, z, h, look);
       pos.push(x, h, z, x, h - 2.5, z);
       col.push(c.r, c.g, c.b, c.r, c.g, c.b);
+      const k = sandiness(c);
+      sd.push(k, k);
     }
     for (let k = 0; k < ring.length - 1; k++) {
       const a = k * 2;
@@ -272,6 +340,7 @@ export class Terrain {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    g.setAttribute('aSand', new THREE.Float32BufferAttribute(sd, 1));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(ring.length * 4), 2));
     g.setIndex(idx);
     g.computeVertexNormals();

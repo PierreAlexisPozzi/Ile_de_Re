@@ -152,7 +152,7 @@ function vegetation({ world, era, group, rng, o, nearTown, pl }) {
   const look = era.look;
   const trunks = [], crowns = [], pineTrunks = [], pineCrowns = [], tamarisk = [];
   const bushes = [], gorse = [], oyats = [], reeds = [], salicorne = [];
-  const N = Math.floor(3200 * look.treeDensity);
+  const N = Math.floor(2600 * look.treeDensity);
   const pick = sampler(rng, pl);
 
   for (let i = 0; i < N * 6 && trunks.length + pineTrunks.length < N; i++) {
@@ -213,10 +213,10 @@ function vegetation({ world, era, group, rng, o, nearTown, pl }) {
   instanced(group, new THREE.CylinderGeometry(0.16, 0.26, 3, 6), bark, trunks);
   instanced(group, new THREE.CylinderGeometry(0.12, 0.2, 6, 6), bark, pineTrunks);
   // houppiers : noyau bosselé sombre + cartes de feuilles découpées
-  bushy(group, crowns, crownMat, leafCardTexture(leafBase, 'broad'), 'crown-' + look.trees, 12);
-  bushy(group, pineCrowns, pineMat, leafCardTexture(0x34502a, 'needle'), 'pine', 11);
+  bushy(group, crowns, crownMat, leafCardTexture(leafBase, 'broad'), 'crown-' + look.trees, 9);
+  bushy(group, pineCrowns, pineMat, leafCardTexture(0x34502a, 'needle'), 'pine', 8);
   bushy(group, tamarisk, texturedMat('tamarisk', foliageTexture(0x5a6a44, 1)), leafCardTexture(0x7a8a5c, 'needle'), 'tamarisk', 9);
-  bushy(group, bushes, texturedMat('bush', foliageTexture(0x34501f, 1)), leafCardTexture(0x4a6a32, 'broad'), 'bush', 10);
+  bushy(group, bushes, texturedMat('bush', foliageTexture(0x34501f, 1)), leafCardTexture(0x4a6a32, 'broad'), 'bush', 7);
   bushy(group, gorse, texturedMat('gorse', foliageTexture(0x4a5a1a, 1)), leafCardTexture(0x9a9020, 'needle'), 'gorse', 8);
   // oyats, roseaux et salicornes : touffes croisées
   tufts(group, oyats, grassTuftTexture(0xa8ac70), 'oyat');

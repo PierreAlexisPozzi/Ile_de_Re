@@ -42,6 +42,74 @@ function finalize(c, repeat = 1) {
   return tex;
 }
 
+// Bruit de valeur raccordable (se répète sans couture sur la texture)
+function tileNoise(size, period, seed) {
+  const g = new Float32Array(period * period);
+  let st = seed * 9301 + 49297;
+  for (let i = 0; i < g.length; i++) { st = (st * 9301 + 49297) % 233280; g[i] = st / 233280; }
+  const out = new Float32Array(size * size);
+  for (let y = 0; y < size; y++) {
+    const fy = (y / size) * period, y0 = Math.floor(fy), ty = fy - y0, sy = ty * ty * (3 - 2 * ty);
+    for (let x = 0; x < size; x++) {
+      const fx = (x / size) * period, x0 = Math.floor(fx), tx = fx - x0, sx = tx * tx * (3 - 2 * tx);
+      const a = g[(y0 % period) * period + (x0 % period)], b = g[(y0 % period) * period + ((x0 + 1) % period)];
+      const c = g[((y0 + 1) % period) * period + (x0 % period)], d = g[((y0 + 1) % period) * period + ((x0 + 1) % period)];
+      out[y * size + x] = a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+    }
+  }
+  return out;
+}
+function tileFbm(size, basePeriod, octaves, seed) {
+  const out = new Float32Array(size * size);
+  let amp = 0.5, tot = 0;
+  for (let o = 0; o < octaves; o++) {
+    const n = tileNoise(size, basePeriod << o, seed + o * 17);
+    for (let i = 0; i < out.length; i++) out[i] += n[i] * amp;
+    tot += amp; amp *= 0.5;
+  }
+  for (let i = 0; i < out.length; i++) out[i] /= tot;
+  return out;
+}
+
+// Carte de normales calculée à partir de la luminance de la texture (Sobel)
+export function normalOf(tex, strength = 2) {
+  const key = 'n' + strength;
+  if (tex.userData[key]) return tex.userData[key];
+  const src = tex.image;
+  const w = src.width, h = src.height;
+  if (!src.getContext) return null;
+  // copie lue une seule fois (évite l'avertissement de relecture du canvas d'origine)
+  const rc = document.createElement('canvas');
+  rc.width = w; rc.height = h;
+  const rctx = rc.getContext('2d', { willReadFrequently: true });
+  rctx.drawImage(src, 0, 0);
+  const d = rctx.getImageData(0, 0, w, h).data;
+  const L = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) L[i] = (d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11) / 255;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const oc = c.getContext('2d');
+  const img = oc.createImageData(w, h);
+  const at = (x, y) => L[((y + h) % h) * w + ((x + w) % w)];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const dx = (at(x + 1, y - 1) + 2 * at(x + 1, y) + at(x + 1, y + 1)) - (at(x - 1, y - 1) + 2 * at(x - 1, y) + at(x - 1, y + 1));
+      const dy = (at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1)) - (at(x - 1, y - 1) + 2 * at(x, y - 1) + at(x + 1, y - 1));
+      let nx = -dx * strength, ny = dy * strength, nz = 1;
+      const l = Math.hypot(nx, ny, nz); nx /= l; ny /= l; nz /= l;
+      const k = (y * w + x) * 4;
+      img.data[k] = (nx * 0.5 + 0.5) * 255; img.data[k + 1] = (ny * 0.5 + 0.5) * 255; img.data[k + 2] = (nz * 0.5 + 0.5) * 255; img.data[k + 3] = 255;
+    }
+  }
+  oc.putImageData(img, 0, 0);
+  const n = new THREE.CanvasTexture(c);
+  n.wrapS = n.wrapT = THREE.RepeatWrapping;
+  n.repeat.copy(tex.repeat);
+  n.anisotropy = 4;
+  tex.userData[key] = n;
+  return n;
+}
+
 // Relief : réutilise le même canvas comme bump map (luminance = hauteur).
 // Donne du grain aux moellons, joints, tuiles et pavés sans coût mémoire notable.
 export function bumpOf(tex) {
@@ -58,39 +126,44 @@ export function bumpOf(tex) {
 export function stoneTexture(base = 0xcabfa6, repeat = 1, mossy = false) {
   const key = `stone-${base}-${repeat}-${mossy}`;
   if (cache.has(key)) return cache.get(key);
-  const size = 256, c = canvas(size), ctx = c.getContext('2d');
-  ctx.fillStyle = lerpColor(base, 0x6a6258, 0.25); // mortier
+  const size = 512, c = canvas(size), ctx = c.getContext('2d');
+  ctx.fillStyle = lerpColor(base, 0x4a443c, 0.45); // mortier en retrait
   ctx.fillRect(0, 0, size, size);
-
-  const rows = 7, rh = size / rows;
-  for (let r = 0; r < rows; r++) {
-    const offset = (r % 2) * (size / 10);
-    const cols = 5;
-    const cw = size / cols;
-    for (let cI = -1; cI <= cols; cI++) {
-      const x = cI * cw + offset + 2;
-      const y = r * rh + 2;
-      const w = cw - 4 - Math.random() * 6;
-      const h = rh - 4 - Math.random() * 4;
-      const shade = 0.85 + Math.random() * 0.3;
-      ctx.fillStyle = lerpColor(base, 0xffffff, (shade - 0.85) * 0.6);
-      ctx.fillStyle = lerpColor(base, 0x000000, (1 - shade) * 0.4);
-      const stone = lerpColor(base, Math.random() > 0.5 ? 0xffffff : 0x000000, Math.random() * 0.18);
+  // assises de moellons de hauteurs inégales
+  let y = 0;
+  while (y < size) {
+    let rh = 46 + Math.random() * 34;
+    if (size - y < rh + 24) rh = size - y;           // la dernière assise remplit le reste
+    let x = -Math.random() * 60;
+    while (x < size) {
+      const cw = 60 + Math.random() * 70;
+      const stone = lerpColor(base, Math.random() > 0.5 ? 0xffffff : 0x3a342c, Math.random() * 0.22);
       ctx.fillStyle = stone;
-      roundRect(ctx, x, y, w, h, 3 + Math.random() * 3);
+      const sw = cw - 6 - Math.random() * 4, sh = rh - 6 - Math.random() * 3;
+      roundRect(ctx, x + 3, y + 3, sw, sh, 5 + Math.random() * 6);
       ctx.fill();
+      // arête éclairée en haut, ombrée en bas
+      ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(x + 6, y + 4, cw - 14, 3);
+      ctx.fillStyle = 'rgba(0,0,0,0.16)'; ctx.fillRect(x + 6, y + rh - 8, cw - 14, 3);
+      x += cw;
     }
+    y += rh;
   }
-  noiseOverlay(ctx, size, 0.18);
-  if (mossy) {
-    ctx.fillStyle = 'rgba(70,100,55,0.5)';
-    for (let i = 0; i < 60; i++) {
-      const x = Math.random() * size, y = size - Math.random() * size * 0.35;
-      ctx.beginPath();
-      ctx.arc(x, y, 4 + Math.random() * 10, 0, Math.PI * 2);
-      ctx.fill();
+  // patine : altération et salissures douces, mousse discrète au pied du mur
+  const img = ctx.getImageData(0, 0, size, size);
+  const wear = tileFbm(size, 4, 4, base & 255);
+  const moss = mossy ? tileFbm(size, 6, 3, 31) : null;
+  for (let i = 0; i < size * size; i++) {
+    const p = i * 4, yy = Math.floor(i / size) / size;
+    const k = 0.86 + wear[i] * 0.26 + (Math.random() - 0.5) * 0.08;
+    let r = img.data[p] * k, g = img.data[p + 1] * k, b = img.data[p + 2] * k;
+    if (moss) {
+      const m = Math.max(0, moss[i] - 0.58) * 2.4 * (0.35 + 0.65 * yy);
+      r = r * (1 - m * 0.45) + 70 * m * 0.45; g = g * (1 - m * 0.35) + 95 * m * 0.35; b = b * (1 - m * 0.5) + 55 * m * 0.5;
     }
+    img.data[p] = Math.min(255, r); img.data[p + 1] = Math.min(255, g); img.data[p + 2] = Math.min(255, b);
   }
+  ctx.putImageData(img, 0, 0);
   const tex = finalize(c, repeat);
   cache.set(key, tex);
   return tex;
@@ -100,23 +173,32 @@ export function stoneTexture(base = 0xcabfa6, repeat = 1, mossy = false) {
 export function plasterTexture(base = 0xeee6d2, repeat = 1) {
   const key = `plaster-${base}-${repeat}`;
   if (cache.has(key)) return cache.get(key);
-  const size = 256, c = canvas(size), ctx = c.getContext('2d');
-  ctx.fillStyle = lerpColor(base, 0xffffff, 0);
-  ctx.fillRect(0, 0, size, size);
-  // taches d'usure
-  for (let i = 0; i < 40; i++) {
-    ctx.fillStyle = `rgba(${120},${110},${90},${0.04 + Math.random() * 0.05})`;
-    ctx.beginPath();
-    ctx.arc(Math.random() * size, Math.random() * size, 10 + Math.random() * 40, 0, Math.PI * 2);
-    ctx.fill();
+  const size = 512, c = canvas(size), ctx = c.getContext('2d');
+  const img = ctx.createImageData(size, size);
+  const r0 = (base >> 16) & 255, g0 = (base >> 8) & 255, b0 = base & 255;
+  // enduit à la chaux : marbrures douces, salissures, grain fin, coulures de pluie
+  const mottle = tileFbm(size, 4, 4, base & 255);
+  const dirt = tileFbm(size, 3, 3, (base >> 8) & 255 + 7);
+  const grain = tileNoise(size, 128, 3);
+  const streak = new Float32Array(size);
+  for (let x = 0; x < size; x++) streak[x] = Math.random() < 0.035 ? 0.4 + Math.random() * 0.6 : 0;
+  for (let x = 1; x < size - 1; x++) streak[x] = Math.max(streak[x], (streak[x - 1] + streak[x + 1]) * 0.35);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = y * size + x;
+      let k = 0.94 + (mottle[i] - 0.5) * 0.14 + (grain[i] - 0.5) * 0.06;
+      const st = dirt[i] > 0.6 ? (dirt[i] - 0.6) * 1.2 : 0;
+      const rain = streak[x] * (0.06 + 0.06 * (y / size)) * (0.6 + 0.4 * mottle[i]);
+      const damp = y > size * 0.78 ? ((y - size * 0.78) / (size * 0.22)) ** 1.5 * 0.22 : 0;
+      k -= rain + damp * 0.6;
+      const p = i * 4;
+      img.data[p] = Math.min(255, r0 * k - st * 40 - damp * 25);
+      img.data[p + 1] = Math.min(255, g0 * k - st * 38 - damp * 15);
+      img.data[p + 2] = Math.min(255, b0 * k - st * 46 - damp * 30);
+      img.data[p + 3] = 255;
+    }
   }
-  // soubassement humide en bas
-  const grad = ctx.createLinearGradient(0, size * 0.7, 0, size);
-  grad.addColorStop(0, 'rgba(90,80,60,0)');
-  grad.addColorStop(1, 'rgba(70,75,55,0.35)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, size * 0.7, size, size * 0.3);
-  noiseOverlay(ctx, size, 0.06);
+  ctx.putImageData(img, 0, 0);
   const tex = finalize(c, repeat);
   cache.set(key, tex);
   return tex;
@@ -427,8 +509,9 @@ export function clothTexture(base = 0x4a6a8a, repeat = 1) {
 }
 
 function roundRect(ctx, x, y, w, h, r) {
-  r = Math.min(r, w / 2, h / 2);
   ctx.beginPath();
+  if (w <= 0 || h <= 0) return;
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
   ctx.moveTo(x + r, y);
   ctx.arcTo(x + w, y, x + w, y + h, r);
   ctx.arcTo(x + w, y + h, x, y + h, r);

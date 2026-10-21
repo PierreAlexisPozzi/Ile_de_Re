@@ -109,7 +109,7 @@ export class DayNight {
     this.sun.intensity = (0.15 + 2.5 * day) * (1 - overcast * 0.55) * (elev > -0.05 ? 1 : 0.0);
     this.moon.intensity = 0.32 * night;
     // à l'intérieur, la lumière du ciel n'entre que par les fenêtres
-    const indoorK = this.world.indoor ? 0.32 : 1;
+    const indoorK = this.world.indoor ? 0.4 : this.scene.environment ? 0.72 : 1;
     this.hemi.intensity = (0.25 + 0.75 * day) * indoorK;
     this.hemi.color.set(0x24304a).lerp(new THREE.Color(0xcfe0f0), day);
     this.hemi.groundColor.set(0x1a1a22).lerp(new THREE.Color(0x6a5a40), day);
@@ -132,7 +132,7 @@ export class DayNight {
 
     // brouillard
     this.fog.color.copy(hor).lerp(new THREE.Color(era.fog.color), 0.4 * (1 - night));
-    this.fog.density = era.fog.density * this.fogBoost * (1 + night * 0.3);
+    this.fog.density = era.fog.density * 0.7 * this.fogBoost * (1 + night * 0.3);
 
     // fenêtres éclairées, lanternes
     setNightGlow(Math.max(0, Math.min(1, (0.25 - elev) * 4)));

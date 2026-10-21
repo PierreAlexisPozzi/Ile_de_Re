@@ -985,7 +985,7 @@ export class TownBuilder {
     door.position.set(w * 0.25, 0.95, -d / 2 - 0.1);
     g.add(door);
     for (const sx of [-1, 1]) {
-      const berm = new THREE.Mesh(new THREE.SphereGeometry(d * 0.45, 8, 6), flat(0xcdb98a, 1));
+      const berm = new THREE.Mesh(new THREE.SphereGeometry(d * 0.45, 12, 8), MAT.sandPath());
       berm.scale.set(0.7, 0.45, 1);
       berm.position.set(sx * (w / 2 + 0.5), 0, 0);
       g.add(berm);
