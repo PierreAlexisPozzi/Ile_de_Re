@@ -126,6 +126,7 @@ export default {
     tb.put(eg, 22, 16, { rot: 0, col: 0 });
     tb.footprint(22, 16, 7, 14, 0);
     tb.colL(22, 24.5, 2.6);
+    tb.door({ x: 22, z: 16, rot: 0, front: 10.6, dx: 0, type: 'church', name: 'Église Sainte-Catherine' });
     tb.spot('eglise', 22, 28.6, { rot: 0 });
     tb.spot('cloche', 22, 28.6);
 

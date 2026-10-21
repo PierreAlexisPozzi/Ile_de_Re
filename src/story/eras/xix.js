@@ -400,7 +400,7 @@ function gabarre(api) {
   g = buildBoat('gabarre');
   g.name = 'sainte-anne';
   g.position.set(s.x, 0.1, s.z);
-  g.rotation.y = 0.05;
+  g.rotation.y = 0.05 + (api.world.townRot ?? 0);
   g.userData.noBatch = true;
   g.userData.bob = 2;
   api.world.eraGroup.add(g);
@@ -410,13 +410,23 @@ function gabarre(api) {
 function departGabarre(api) {
   const g = gabarre(api);
   if (!g) return;
-  const cx = api.world.townCenter.x;
-  api.world.animated.push({ obj: g, kind: 'custom', update: (t, dt) => {
+  // trajet dans le repère de la ville : vers l'axe du chenal (x = 0), puis vers le nord
+  const w = api.world;
+  const c = Math.cos(w.townRot ?? 0), s = Math.sin(w.townRot ?? 0);
+  const local = () => {
+    const dx = g.position.x - w.townCenter.x, dz = g.position.z - w.townCenter.z;
+    return { x: dx * c - dz * s, z: dx * s + dz * c };
+  };
+  w.animated.push({ obj: g, kind: 'custom', update: (t, dt) => {
     if (!g.visible) return;
     const step = Math.min(dt, 0.1) * 1.6;
-    if (Math.abs(g.position.x - cx) > 0.1) g.position.x += Math.sign(cx - g.position.x) * Math.min(step, Math.abs(cx - g.position.x));
-    else g.position.z -= step;
-    if (g.position.z < api.world.townCenter.z - 70) g.visible = false;
+    const l = local();
+    let mx = 0, mz = 0;
+    if (Math.abs(l.x) > 0.1) mx = -Math.sign(l.x) * Math.min(step, Math.abs(l.x));
+    else mz = -step;
+    const o = w.offset(mx, mz);
+    g.position.x += o.x; g.position.z += o.z;
+    if (l.z < -70) g.visible = false;
   } });
 }
 

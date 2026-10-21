@@ -7,7 +7,7 @@ import { state } from '../core/state.js';
 import { pressed } from '../core/input.js';
 import { heightAt } from '../world/terrain.js';
 import { getEra } from '../story/eras.js';
-import { LOCATION } from '../world/locations.js';
+import { placementOf, localToWorld } from '../world/locations.js';
 import { api } from './api.js';
 import { SEQUENCES } from '../story/cinematics.js';
 
@@ -32,11 +32,12 @@ export class Cinematic {
   // Plan d'arrivée dans une époque : survol de la ville avec carton-titre
   arrival(eraId, onEnd) {
     const era = getEra(eraId);
-    const t = LOCATION[era.town].position;
-    const c = { x: t[0], z: t[2] };
+    const pl = placementOf(era.town);
+    const c = { x: pl.x, z: pl.z };
     const h = heightAt(c.x, c.z);
+    const f = localToWorld(pl, -38, 40), t = localToWorld(pl, -10, 34);
     this.start([{
-      from: { x: c.x - 38, y: h + 24, z: c.z + 40 }, to: { x: c.x - 10, y: h + 12, z: c.z + 34 },
+      from: { x: f.x, y: h + 24, z: f.z }, to: { x: t.x, y: h + 12, z: t.z },
       look: { x: c.x, y: h + 2, z: c.z }, dur: 5,
       title: `${era.townName}`, caption: `${era.name} — ${era.years}`,
     }], onEnd);

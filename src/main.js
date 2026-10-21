@@ -6,6 +6,7 @@ import { state, S, save, load, hasSave, resetState } from './core/state.js';
 import { on, emit } from './core/events.js';
 import { initInput, endFrame, releasePointer } from './core/input.js';
 import { World } from './world/world.js';
+import { Interiors } from './world/interiors.js';
 import { heightAt } from './world/terrain.js';
 import { LOCATION } from './world/locations.js';
 import { Player } from './player.js';
@@ -36,7 +37,7 @@ renderer.toneMappingExposure = 1.0;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 1600);
+const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 2600);
 
 function applyQuality() {
   const q = state.options.quality;
@@ -72,7 +73,8 @@ let dayNight = null;
 const audio = new AudioManager();
 const cinematic = new Cinematic(camera);
 const ui = new UI();
-Object.assign(api, { world, player, npcs, quests, dialogue, questWorld, ui, audio, cinematic, camera, scene, renderer });
+const interiors = new Interiors(world, scene);
+Object.assign(api, { world, player, npcs, quests, dialogue, questWorld, ui, audio, cinematic, camera, scene, renderer, interiors });
 api.applyQuality = applyQuality;
 api.on = on;
 initInput(canvas);
@@ -97,6 +99,7 @@ async function travel(eraId, opts = {}) {
     await new Promise((r) => setTimeout(r, 750));
   }
   if (dialogue.isOpen()) dialogue.abort();
+  if (interiors.inside) await interiors.exit(true);
   player.dismount(true);
   state.era = eraId;
   const era = getEra(eraId);
@@ -106,7 +109,8 @@ async function travel(eraId, opts = {}) {
   questWorld.clear();
   audio.setEra(eraId);
   audio.clearSpatial();
-  for (const l of world.lights) audio.addSpatial('fire', l.light.position);
+  world.eraGroup.updateMatrixWorld(true);
+  for (const l of world.lights) audio.addSpatial('fire', l.light.getWorldPosition(new THREE.Vector3()));
   for (const s of Object.values(world.spots)) if (s.sound) audio.addSpatial(s.sound, { x: s.x, y: heightAt(s.x, s.z) + 1, z: s.z });
   if (!opts.keepPos) {
     const sp = world.spawn;
@@ -210,6 +214,7 @@ function loop(now) {
     dayNight.update(dt, p);
     world.night = dayNight.night;
     world.update(dt, t, state.time, camera);
+    interiors.update(dt, dayNight.daylight ?? 1);
     world.fauna.playerPos.copy(p);
     world.fauna.playerSpeed = player.speed;
     npcs.update(dt, { player: p, hour: state.time, camera, playerSpeed: player.speed, onBike: player.mode === 'bike' });

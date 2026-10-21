@@ -131,7 +131,7 @@ export default {
     tb.spot('dalle-centre', -8, -13);
 
     // ---------- logements des gardiens : musée et maison ----------
-    tb.house(13, -3.5, 0, { w: 10, d: 6, floors: 1, style: 'whitewash', shutter: 0x9a2a22, roof: 'tilesNew', quoins: true, plinth: 0x58544c, chimney: true, door: 0x6a2a22 });
+    tb.house(13, -3.5, 0, { enter: { type: 'museum', name: 'Musée du phare' }, w: 10, d: 6, floors: 1, style: 'whitewash', shutter: 0x9a2a22, roof: 'tilesNew', quoins: true, plinth: 0x58544c, chimney: true, door: 0x6a2a22 });
     tb.plaque({ text: 'MUSÉE DU PHARE', sub: 'Mémoire des gardiens · Exposition', style: 'enamel', bg: '#7a1e1a' }, 13, -0.47, 0, 3.0, 2.6);
     tb.spot('musee', 11, 2, { rot: PI });
     tb.house(-13, -3.5, 0, { w: 9, d: 6, floors: 1, style: 'whitewash', shutter: 0x9a2a22, roof: 'tilesNew', quoins: true, plinth: 0x58544c, door: 0x6a2a22, flowers: true });

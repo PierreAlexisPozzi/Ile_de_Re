@@ -4,9 +4,10 @@
 
 import * as THREE from 'three';
 import { Terrain, Ocean, Sky, heightAt, setTownFlatten, setCarves, rawHeight } from './terrain.js';
+import { setGeoEra } from './geo/shape.js';
 import { TownBuilder } from './builder.js';
 import { batchStatic } from '../gfx/batch.js';
-import { LOCATION } from './locations.js';
+import { LOCATION, placementOf } from './locations.js';
 import { getEra } from '../story/eras.js';
 import { buildLandscape } from './landscape.js';
 import { Fauna } from './fauna.js';
@@ -102,7 +103,11 @@ export class World {
     const def = TOWNS[eraId];
     this.currentEra = eraId;
     this.era = era;
-    this.townCenter = { x: town.position[0], z: town.position[2] };
+    const pl = placementOf(era.town);
+    this.placement = pl;
+    this.townCenter = { x: pl.x, z: pl.z };
+    this.townRot = pl.rot ?? 0;
+    setGeoEra(eraId);
 
     // nettoyage
     while (this.eraGroup.children.length) {
@@ -114,20 +119,19 @@ export class World {
     this.animated = [];
     this.lights = [];
 
-    // relief : plateau de la ville + bassins portuaires creusés
-    const [tx, , tz] = town.position;
+    // relief : plateau de la ville + bassins portuaires creusés (repère local)
+    const tx = pl.x, tz = pl.z;
     const th = def.height ?? Math.max(1.4, rawHeight(tx, tz));
-    setTownFlatten(tx, tz, def.radius ?? 42, th);
+    const R = def.radius ?? 42;
+    setTownFlatten(tx, tz, R, th);
     const carveList = typeof def.carves === 'function' ? def.carves(flags) : (def.carves || []);
-    setCarves(carveList.map((c) => (c.r !== undefined
-      ? { cx: tx + c.cx, cz: tz + c.cz, r: c.r, depth: c.depthRel !== undefined ? th + c.depthRel : (c.depth ?? -1.4) }
-      : { x0: tx + c.x0, z0: tz + c.z0, x1: tx + c.x1, z1: tz + c.z1, depth: c.depthRel !== undefined ? th + c.depthRel : (c.depth ?? -1.4) })));
-    this.terrain.refresh(era.look);
+    setCarves(carveList.map((c) => ({ ...c, depth: c.depthRel !== undefined ? th + c.depthRel : (c.depth ?? -1.4) })), tx, tz, this.townRot);
+    this.terrain.refresh(era.look, { x: tx, z: tz, half: R + 45 });
     this.ocean.refreshDepth();
     this.ocean.setColors(era.sea.deep, era.sea.shallow);
 
     // la ville
-    const tb = new TownBuilder(this, town, eraId, flags, th);
+    const tb = new TownBuilder(this, town, eraId, flags, th, pl);
     def.build(tb, flags);
     const stats = batchStatic(tb.group);
     this.eraGroup.add(tb.group, tb.dyn);
@@ -139,22 +143,30 @@ export class World {
     this.townBuilder = tb;
 
     // le reste de l'île
-    const land = buildLandscape(this, era, town, flags);
+    const land = buildLandscape(this, era, town, flags, pl);
     this.eraGroup.add(land.group);
     this.animated.push(...land.animated);
     this.interactables.push(...land.interactables);
 
     this.buildGrid();
-    this.fauna.load(era, town);
+    this.fauna.load(era, pl);
     this.spawn = this.spots.spawn ?? { x: tx, z: tz + 6 };
     this.stats = { ...stats, colliders: this.colliders.length };
     return this.stats;
   }
 
+  // Décalage exprimé dans le repère de la ville -> monde
+  offset(dx, dz) {
+    const c = Math.cos(this.townRot ?? 0), s = Math.sin(this.townRot ?? 0);
+    return { x: dx * c + dz * s, z: -dx * s + dz * c };
+  }
+  toWorld(lx, lz) { const o = this.offset(lx, lz); return { x: this.townCenter.x + o.x, z: this.townCenter.z + o.z }; }
+
   spotPos(name, dx = 0, dz = 0) {
     const s = this.spots[name];
     if (!s) return null;
-    return { x: s.x + dx, z: s.z + dz, y: heightAt(s.x + dx, s.z + dz) };
+    const o = this.offset(dx, dz);
+    return { x: s.x + o.x, z: s.z + o.z, y: heightAt(s.x + o.x, s.z + o.z) };
   }
 
   update(dt, time, hours, camera) {

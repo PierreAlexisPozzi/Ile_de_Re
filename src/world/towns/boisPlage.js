@@ -57,6 +57,7 @@ export default {
     tb.footprint(0, -25.5, 9, 17, 0);
     tb.colL(0, -15.5, 3.1);
     tb.spot('eglise', 0, -11.6, { rot: 0 });
+    tb.door({ x: 0, z: -15.5, rot: 0, front: 2.4, dx: 0, type: 'church', name: "L'église du Bois" });
 
     // ---------- commerces de la rue principale (côté nord) ----------
     tb.house(-26, -6, 0, {
@@ -87,7 +88,7 @@ export default {
     });
     tb.house(19.5, -6, 0, { ...w43, w: 6.4, d: 7, floors: 1, shutter: 0x4f7f5f });
     // la Kommandantur : une villa réquisitionnée
-    tb.house(29, -7, 0, { ...w43, w: 9, d: 8, floors: 2, style: 'grey', roof: 'slate', shutter: 0x3a3a3a, door: 0x2a2a2a, doorX: 0, quoins: true, chimney: true, flowers: false });
+    tb.house(29, -7, 0, { ...w43, enter: { name: 'Kommandantur', locked: 'La Kommandantur : entrée interdite aux civils. La sentinelle te fait signe de passer ton chemin.' }, w: 9, d: 8, floors: 2, style: 'grey', roof: 'slate', shutter: 0x3a3a3a, door: 0x2a2a2a, doorX: 0, quoins: true, chimney: true, flowers: false });
     const ksign = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.55), new THREE.MeshStandardMaterial({ map: signTexture({ text: 'KOMMANDANTUR', style: 'gothic', bg: '#f0ece0', fg: '#141414' }), roughness: 0.7 }));
     tb.put(ksign, 29, -2.94, { y: 3.0, shadow: false });
     // guérite rayée
@@ -109,7 +110,7 @@ export default {
       shop: { id: 'cycles', name: 'Cycles Brunet', kind: 'vitrine', color: 0x3a3a3a, goods: ['bikes'],
         sign: { text: 'CYCLES BRUNET', sub: 'Réparations · Pneus · T.S.F.', style: 'painted', bg: '#3a3a3a', fg: '#f0d890', icon: 'bicycle' } },
     });
-    tb.house(-14, 6, PI, { ...w43, w: 8, d: 7, floors: 2, style: 'cream', shutter: 0x6a6a6a, door: 0x2a2a2a, doorX: 0, quoins: true, flowers: false });
+    tb.house(-14, 6, PI, { ...w43, enter: { type: 'mairie', name: 'Mairie' }, w: 8, d: 7, floors: 2, style: 'cream', shutter: 0x6a6a6a, door: 0x2a2a2a, doorX: 0, quoins: true, flowers: false });
     tb.plaque({ text: 'MAIRIE', style: 'carved', bg: '#e8e0c8', fg: '#2a2a2a' }, -14, 2.47, PI, 3.1, 1.6);
     tb.spot('mairie', -14, 0.6, { rot: PI });
     tb.house(-6, 6, PI, { ...w43, w: 6, d: 7, floors: 1, shutter: 0x4f7f5f });
@@ -146,7 +147,7 @@ export default {
     6.6, 16, -PI / 2, { mount: 'post', y: 1.5 });
 
     // ---------- l'école ----------
-    tb.house(-15, -16, 0, { ...w43, w: 8, d: 6.4, floors: 1, style: 'cream', shutter: 0x4a5560, door: 0x2a3a4a, doorX: 0, flowers: false });
+    tb.house(-15, -16, 0, { ...w43, enter: { type: 'school', name: 'École publique' }, w: 8, d: 6.4, floors: 1, style: 'cream', shutter: 0x4a5560, door: 0x2a3a4a, doorX: 0, flowers: false });
     tb.plaque({ text: 'ÉCOLE PUBLIQUE', style: 'carved', bg: '#e8e0c8', fg: '#2a2a2a' }, -15, -12.77, 0, 3.0, 2.4);
     tb.spot('ecole', -15, -11.4, { rot: 0 });
     tb.fence(-20, -11, -10, -11);

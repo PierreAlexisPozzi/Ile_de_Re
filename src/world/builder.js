@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 import { heightAt } from './terrain.js';
 import { leafCardTexture, leafCardsGeometry, lumpyGeometry, cardMaterial } from '../gfx/foliage.js';
+import { shopInterior } from './interiors.js';
 import { MAT, flat, shutterMat, cached } from './materials.js';
 import { signTexture, hangingTexture, posterTexture } from '../gfx/signs.js';
 import { mulberry32, hashStr } from '../core/rng.js';
@@ -64,18 +65,24 @@ export function box(w, h, d, tile = 2) {
 }
 
 export class TownBuilder {
-  constructor(world, town, eraId, flags, height) {
+  // placement : { x, z, rot } — centre et orientation de la ville dans le monde.
+  // Tout ce que construit une ville est décrit dans son repère local.
+  constructor(world, town, eraId, flags, height, placement) {
     this.world = world;
     this.town = town;
     this.era = eraId;
     this.flags = flags || {};
-    this.cx = town.position[0];
-    this.cz = town.position[2];
+    this.cx = placement.x;
+    this.cz = placement.z;
+    this.rot = placement.rot ?? 0;
+    this.rc = Math.cos(this.rot); this.rs = Math.sin(this.rot);
     this.h = height;
     this.group = new THREE.Group();          // statique : fusionné à la fin
     this.group.position.set(this.cx, 0, this.cz);
+    this.group.rotation.y = this.rot;
     this.dyn = new THREE.Group();            // animé / interactif
     this.dyn.position.set(this.cx, 0, this.cz);
+    this.dyn.rotation.y = this.rot;
     this.rng = mulberry32(hashStr(town.id + eraId));
     this.spots = {};
     this.paths = {};
@@ -85,22 +92,29 @@ export class TownBuilder {
   }
 
   // ---------- utilitaires de repère ----------
-  hL(x, z) { return heightAt(this.cx + x, this.cz + z); }
-  colL(x, z, r) { this.world.addCollider(this.cx + x, this.cz + z, r); }
-  W(x, z) { return { x: this.cx + x, z: this.cz + z }; }
+  hL(x, z) { const w = this.W(x, z); return heightAt(w.x, w.z); }
+  colL(x, z, r) { const w = this.W(x, z); this.world.addCollider(w.x, w.z, r); }
+  W(x, z) { return { x: this.cx + x * this.rc + z * this.rs, z: this.cz - x * this.rs + z * this.rc }; }
   rand(a = 0, b = 1) { return a + (b - a) * this.rng(); }
   pick(arr) { return arr[Math.floor(this.rng() * arr.length)]; }
 
   spot(name, x, z, extra = {}) {
-    this.spots[name] = { x: this.cx + x, z: this.cz + z, ...extra };
+    const w = this.W(x, z);
+    this.spots[name] = { ...extra, x: w.x, z: w.z, ...(extra.rot !== undefined ? { rot: extra.rot + this.rot } : {}) };
+    return this.spots[name];
+  }
+  // point nommé donné directement en coordonnées du monde (hors de la ville)
+  spotW(name, x, z, extra = {}) {
+    this.spots[name] = { ...extra, x, z };
     return this.spots[name];
   }
   path(name, pts) {
-    this.paths[name] = pts.map(([x, z]) => ({ x: this.cx + x, z: this.cz + z }));
+    this.paths[name] = pts.map(([x, z]) => this.W(x, z));
   }
   interact(def) {
     const w = this.W(def.x, def.z);
     const it = { r: 2.2, ...def, x: w.x, z: w.z, y: def.y ?? (this.hL(def.x, def.z) + 1.2) };
+    if (def.rot !== undefined) it.rot = def.rot + this.rot;
     this.interactables.push(it);
     return it;
   }
@@ -241,8 +255,37 @@ export class TownBuilder {
     this.group.add(g);
     if (o.col !== false) this.footprint(x, z, w, d, rot);
     if (o.shop) this.shopfront(g, x, z, rot, w, d, o.shop, front);
+    // porte d'entrée : on peut visiter la maison ou la boutique
+    if (o.enter !== false && (o.door !== false || o.shop)) {
+      this.door({
+        x, z, rot, front, w, d, dx: o.shop ? 0 : doorX,
+        type: o.enter?.type ?? (o.shop ? shopInterior(o.shop) : this.era === 'prehistoire' ? 'hut' : 'home'),
+        name: o.enter?.name ?? o.shop?.name ?? (this.era === 'prehistoire' ? 'Hutte' : 'Maison'),
+        shopId: o.shop?.id, sign: o.shop?.sign, locked: o.enter?.locked,
+      });
+    }
     if (o.hollyhocks ?? (o.flowers && this.rng() < 0.5)) this.hollyhocks(g, w, front, doorX);
     return g;
+  }
+
+  // Porte menant à un intérieur. def : { x, z, rot, front, dx, w, d, type, name, shopId, sign, locked }
+  // (x, z, rot : centre et orientation du bâtiment dans le repère de la ville ; front : demi-profondeur)
+  door(def) {
+    const c = Math.cos(def.rot), s = Math.sin(def.rot);
+    const at = (lx, lz) => this.W(def.x + lx * c + lz * s, def.z - lx * s + lz * c);
+    const p = at(def.dx ?? 0, def.front + 0.75), out = at(def.dx ?? 0, def.front + 1.5);
+    const it = {
+      id: `door:${def.x.toFixed(1)}:${def.z.toFixed(1)}`, kind: 'door', x: 0, z: 0, r: 1.25,
+      label: def.locked ? `${def.name} (fermé)` : `Entrer — ${def.name}`,
+      interior: {
+        type: def.type, name: def.name, w: def.w, d: def.d, doorX: 0, shopId: def.shopId, sign: def.sign, locked: def.locked,
+        seed: `${this.era}:${def.x.toFixed(1)}:${def.z.toFixed(1)}`,
+        out: { x: out.x, z: out.z, yaw: def.rot + this.rot },
+      },
+    };
+    it.x = p.x; it.z = p.z; it.y = heightAt(p.x, p.z) + 1.2;
+    this.interactables.push(it);
+    return it;
   }
 
   // Collisions : rangée de cercles couvrant l'emprise rectangulaire
@@ -413,7 +456,7 @@ export class TownBuilder {
       this.spot(shop.id, fx, fz, { rot });
       this.spot(shop.id + ':keeper', kx, kz, { rot });
       this.interact({
-        id: 'shop:' + shop.id, kind: 'shop', x: fx, z: fz, r: 2.4,
+        id: 'shop:' + shop.id, kind: 'shop', x: fx, z: fz, r: 1.8,
         label: `Commercer — ${shop.name ?? 'Boutique'}`, shop,
       });
     }
@@ -949,6 +992,10 @@ export class TownBuilder {
     }
     if (ruined) g.rotation.z = 0.12;
     this.put(g, x, z, { rot, col: Math.max(w, d) * 0.62 });
+    if (!ruined) {
+      // la porte est à l'arrière (face à la terre)
+      this.door({ x, z, rot: rot + PI, front: d / 2 + 0.4, dx: -w * 0.25, w: 5.4, d: 5, type: 'bunker', name: 'Blockhaus' });
+    }
     return g;
   }
   hedgehog(x, z) {
@@ -998,8 +1045,9 @@ export class TownBuilder {
   // Bateau à quai (repère local) ; type selon l'époque. Embarquable si boardable.
   boat(x, z, rot, type = 'sail', { boardable = false, label } = {}) {
     const g = buildBoat(type);
-    g.position.set(this.cx + x, 0.1, this.cz + z);
-    g.rotation.y = rot;
+    const w = this.W(x, z);
+    g.position.set(w.x, 0.1, w.z);
+    g.rotation.y = rot + this.rot;
     g.userData.noBatch = true;
     g.userData.bob = this.rng() * 6;
     this.world.eraGroup.add(g);

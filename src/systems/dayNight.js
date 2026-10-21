@@ -108,7 +108,9 @@ export class DayNight {
     this.sun.color.copy(sunCol);
     this.sun.intensity = (0.15 + 2.5 * day) * (1 - overcast * 0.55) * (elev > -0.05 ? 1 : 0.0);
     this.moon.intensity = 0.32 * night;
-    this.hemi.intensity = 0.25 + 0.75 * day;
+    // à l'intérieur, la lumière du ciel n'entre que par les fenêtres
+    const indoorK = this.world.indoor ? 0.32 : 1;
+    this.hemi.intensity = (0.25 + 0.75 * day) * indoorK;
     this.hemi.color.set(0x24304a).lerp(new THREE.Color(0xcfe0f0), day);
     this.hemi.groundColor.set(0x1a1a22).lerp(new THREE.Color(0x6a5a40), day);
 

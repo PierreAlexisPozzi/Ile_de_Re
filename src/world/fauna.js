@@ -5,7 +5,7 @@
 // Chaque animal s'enfuit si l'on approche trop vite ; on peut l'observer (E).
 
 import * as THREE from 'three';
-import { heightAt, islandMask, marshMask, forestMask } from './terrain.js';
+import { heightAt, islandMask, marshMask, forestMask, coastDist } from './terrain.js';
 import { flat } from './materials.js';
 import { clothMat } from '../gfx/cloth.js';
 import { mulberry32, hashStr, angleDiff } from '../core/rng.js';
@@ -193,10 +193,10 @@ export class Fauna {
     return a;
   }
 
-  load(era, town) {
+  load(era, pl) {
     this.clear();
     const rng = mulberry32(hashStr('fauna' + era.id));
-    const tx = town.position[0], tz = town.position[2];
+    const tx = pl.x, tz = pl.z;
     const findSpot = (test, tries = 300, r = 110) => {
       for (let i = 0; i < tries; i++) {
         const x = tx + (rng() - 0.5) * r * 2, z = tz + (rng() - 0.5) * r * 2;
@@ -230,7 +230,7 @@ export class Fauna {
     }
     if (era.id === 'prehistoire') {
       for (let i = 0; i < 4; i++) {
-        const p = findSpot((x, z) => forestMask(x, z) > 0.2 && heightAt(x, z) > 1 && Math.hypot(x - tx, z - tz) > 25, 500, 80);
+        const p = findSpot((x, z) => heightAt(x, z) > 1 && coastDist(x, z) > 10 && Math.hypot(x - tx, z - tz) > 25 && !this.world.isBlocked(x, z, 0.5), 500, 80);
         if (p) this.spawn('deer', p.x, p.z);
       }
     }

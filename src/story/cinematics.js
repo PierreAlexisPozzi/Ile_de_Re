@@ -2,12 +2,12 @@
 // Chaque plan : { era?, from, to, look | orbit, dur, title?, caption?, do? }
 
 import { heightAt } from '../world/terrain.js';
-import { LOCATION } from '../world/locations.js';
+import { placementOf } from '../world/locations.js';
 import { getEra } from './eras.js';
 
 const town = (era) => {
-  const p = LOCATION[getEra(era).town].position;
-  return { x: p[0], z: p[2], y: heightAt(p[0], p[2]) };
+  const p = placementOf(getEra(era).town);
+  return { x: p.x, z: p.z, y: heightAt(p.x, p.z) };
 };
 
 // Plan en orbite autour d'une ville

@@ -1,49 +1,58 @@
-// Paysage de l'île hors de la ville de l'époque. L'île change avec le temps :
-//  - Néolithique : chênaie dense, marais vierges, pas de sel ni de vigne ;
-//  - à partir des Romains : vignes, premiers marais salants ;
+// Paysage de l'île hors de la ville de l'époque, à sa place géographique
+// réelle. L'île change avec le temps :
+//  - Néolithique : chênaie dense, trois îles, pas de sel ni de vigne ;
+//  - à partir des Romains : vignes, premiers marais salants, fermes ;
+//  - Moyen Âge : villages autour de leur église, gués envasés ;
 //  - XVIIᵉ–XIXᵉ : moulins à vent, mulons de sel, tour puis phare des Baleines ;
 //  - XIXᵉ : pinèdes plantées pour fixer les dunes ;
-//  - 1943 : bunkers du Mur de l'Atlantique et obstacles de plage ;
-//  - aujourd'hui : pistes cyclables, bunkers basculés sur les plages.
+//  - 1943 : bunkers du Mur de l'Atlantique sur la côte sud ;
+//  - aujourd'hui : pistes cyclables, bunkers basculés, pont vers le continent.
 
 import * as THREE from 'three';
-import {
-  heightAt, islandMask, marshMask, vineMask, forestMask, HALF_L,
-} from './terrain.js';
+import { heightAt, marshMask, vineMask, forestMask, coastDist, atlanticSide } from './terrain.js';
 import { MAT, flat, texturedMat } from './materials.js';
 import { foliageTexture, barkTexture } from '../gfx/textures.js';
 import { leafCardTexture, grassTuftTexture, leafCardsGeometry, lumpyGeometry, tuftGeometry, cardMaterial } from '../gfx/foliage.js';
 import { mulberry32, hashStr, smoothstep } from '../core/rng.js';
 import { gableRoofGeometry, box } from './builder.js';
-import { LOCATIONS } from './locations.js';
+import { LOCATIONS, placementOf, localToWorld } from './locations.js';
+import { BRIDGE, geoEra } from './geo/shape.js';
+import { batchStatic } from '../gfx/batch.js';
 
 const PI = Math.PI;
 const ORDER = { prehistoire: 1, antiquite: 2, moyenage: 3, xvii: 4, xix: 5, wwii: 6, contemporaine: 7 };
+// emprise de l'île (unités de monde)
+const IX0 = -800, IX1 = 810, IZ0 = -435, IZ1 = 430;
 
-export function buildLandscape(world, era, town, flags) {
+export function buildLandscape(world, era, town, flags, pl) {
   const group = new THREE.Group();
   const animated = [];
   const interactables = [];
   const rng = mulberry32(hashStr('land-' + era.id));
   const o = ORDER[era.id];
-  const tx = town.position[0], tz = town.position[2];
+  const tx = pl.x, tz = pl.z;
   const nearTown = (x, z, r = 62) => Math.hypot(x - tx, z - tz) < r;
-  const ctx = { world, era, group, animated, interactables, rng, o, nearTown, flags };
+  const ctx = { world, era, group, animated, interactables, rng, o, nearTown, flags, town, pl };
 
   roads(ctx);
   vegetation(ctx);
   if (era.look.vines) vineyards(ctx);
   if (era.look.saltPans && o >= 3) saltHeaps(ctx);
   if (era.look.windmills) windmills(ctx);
-  landmarks(ctx, town);
+  villages(ctx);
+  landmarks(ctx);
   if (o >= 3) fishWeirs(ctx);
   if (era.look.bunkers) coastBunkers(ctx, false);
   if (era.look.ruinedBunkers) coastBunkers(ctx, true);
+  if (geoEra().bridge) bridge(ctx);
   return { group, animated, interactables };
 }
 
+const rand = (rng, a, b) => a + (b - a) * rng();
+const land = (x, z, d = 2) => coastDist(x, z) > d;
+
 // ----------------------------------------------------------------------
-//  Routes et chemins
+//  Routes et chemins entre les villages
 // ----------------------------------------------------------------------
 function strip(group, pts, width, mat, lift = 0.07) {
   const positions = [], uvs = [], idx = [];
@@ -73,40 +82,37 @@ function strip(group, pts, width, mat, lift = 0.07) {
   return m;
 }
 
-function roads({ era, group, o, nearTown }) {
-  // grande route de l'île reliant les villages d'ouest en est
-  const towns = [...LOCATIONS].filter((l) => l.id !== 'lilleau' && l.id !== 'fort-la-pree')
-    .sort((a, b) => a.position[0] - b.position[0]);
-  const ctrl = towns.map((t) => new THREE.Vector3(t.position[0], 0, t.position[2] + 6));
-  const curve = new THREE.CatmullRomCurve3(ctrl, false, 'catmullrom', 0.5);
-  const pts = curve.getPoints(260).map((p) => ({ x: p.x, z: p.z }));
-  // on interrompt la route dans la ville (ses rues prennent le relais)
-  const segments = [];
-  let cur = [];
-  for (const p of pts) {
-    if (nearTown(p.x, p.z, 40) || heightAt(p.x, p.z) < 0.3) {
-      if (cur.length > 2) segments.push(cur);
-      cur = [];
-    } else cur.push(p);
-  }
-  if (cur.length > 2) segments.push(cur);
-  const mat = o === 1 ? MAT.dirtPale() : o === 7 ? MAT.asphalt() : o >= 4 && o <= 5 ? MAT.dirt() : MAT.dirt();
-  const width = o === 1 ? 1.6 : o === 7 ? 5.5 : 3.2;
-  for (const s of segments) strip(group, s, width, mat);
-
-  if (era.look.bikePaths) {
-    // piste cyclable (revêtement rouge et ligne médiane) en léger décalage
-    const off = pts.map((p, i) => {
-      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
-      let dx = b.x - a.x, dz = b.z - a.z;
-      const dl = Math.hypot(dx, dz) || 1;
-      return { x: p.x - (dz / dl) * 7, z: p.z + (dx / dl) * 7 };
-    });
+// Réseau routier réel : la grande route (D735) et la route du sud (D201)
+const ROADS = [
+  { min: 2, pts: [[800, 281], [745, 300], [689, 311], [640, 270], [560, 190], [470, 120], [418, 100], [350, 60], [280, 15], [210, 0], [130, 8], [40, 25], [-30, 32], [-83, 38], [-170, 20], [-260, 5], [-330, -2], [-400, -6], [-470, -22], [-520, -38], [-564, -50], [-610, -80], [-650, -140], [-694, -192], [-730, -250], [-768, -305]] },
+  { min: 3, pts: [[689, 311], [600, 330], [530, 345], [478, 348], [400, 300], [300, 230], [200, 160], [120, 115], [78, 100], [0, 70], [-83, 38]] },
+  { min: 3, pts: [[-694, -192], [-650, -260], [-600, -320], [-540, -350], [-468, -361]] },
+  { min: 3, pts: [[-230, 10], [-215, -40], [-200, -100], [-185, -150], [-178, -170]] },
+];
+function roads({ era, group, o, nearTown, pl }) {
+  const mat = o <= 2 ? MAT.dirtPale() : o >= 6 ? MAT.asphalt() : MAT.dirt();
+  const width = o === 1 ? 1.6 : o >= 6 ? 6.5 : o === 2 ? 3 : 4;
+  for (const road of ROADS) {
+    if (o < road.min && !(o === 1 && road === ROADS[0])) continue;
+    const curve = new THREE.CatmullRomCurve3(road.pts.map(([x, z]) => new THREE.Vector3(x, 0, z)), false, 'catmullrom', 0.5);
+    const pts = curve.getSpacedPoints(Math.ceil(curve.getLength() / 4)).map((p) => ({ x: p.x, z: p.z }));
     let seg = [];
-    for (const p of off) {
-      if (nearTown(p.x, p.z, 30) || heightAt(p.x, p.z) < 0.3) { if (seg.length > 2) strip(group, seg, 2.6, MAT.cycleway(), 0.08); seg = []; } else seg.push(p);
+    const flush = () => { if (seg.length > 2) strip(group, seg, width, mat); seg = []; };
+    for (const p of pts) {
+      if (nearTown(p.x, p.z, 52) || heightAt(p.x, p.z) < 0.25) flush(); else seg.push(p);
     }
-    if (seg.length > 2) strip(group, seg, 2.6, MAT.cycleway(), 0.08);
+    flush();
+    // piste cyclable rouge le long de la grande route
+    if (era.look.bikePaths && road === ROADS[0]) {
+      let bs = [];
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+        const dx = b.x - a.x, dz = b.z - a.z, dl = Math.hypot(dx, dz) || 1;
+        const p = { x: pts[i].x - (dz / dl) * 7, z: pts[i].z + (dx / dl) * 7 };
+        if (nearTown(p.x, p.z, 45) || heightAt(p.x, p.z) < 0.3) { if (bs.length > 2) strip(group, bs, 2.6, MAT.cycleway(), 0.08); bs = []; } else bs.push(p);
+      }
+      if (bs.length > 2) strip(group, bs, 2.6, MAT.cycleway(), 0.08);
+    }
   }
 }
 
@@ -131,23 +137,34 @@ function compose(x, y, z, sx, sy, sz, ry = 0, rx = 0, rz = 0) {
   return M4().compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(sx, sy, sz));
 }
 
-function vegetation({ world, era, group, rng, o, nearTown }) {
+// Échantillonne l'île, plus densément près de la ville active
+function sampler(rng, pl, near = 320) {
+  return () => {
+    if (rng() < 0.55) {
+      const a = rng() * PI * 2, r = Math.sqrt(rng()) * near;
+      return [pl.x + Math.cos(a) * r, pl.z + Math.sin(a) * r];
+    }
+    return [rand(rng, IX0, IX1), rand(rng, IZ0, IZ1)];
+  };
+}
+
+function vegetation({ world, era, group, rng, o, nearTown, pl }) {
   const look = era.look;
   const trunks = [], crowns = [], pineTrunks = [], pineCrowns = [], tamarisk = [];
   const bushes = [], gorse = [], oyats = [], reeds = [], salicorne = [];
-  const N = Math.floor(1400 * look.treeDensity);
+  const N = Math.floor(3200 * look.treeDensity);
+  const pick = sampler(rng, pl);
 
-  for (let i = 0; i < N * 4 && trunks.length + pineTrunks.length < N; i++) {
-    const x = (rng() - 0.5) * HALF_L * 2;
-    const z = (rng() - 0.5) * 130;
-    const m = islandMask(x, z);
-    if (m < 0.1 || nearTown(x, z, 60)) continue;
+  for (let i = 0; i < N * 6 && trunks.length + pineTrunks.length < N; i++) {
+    const [x, z] = pick();
+    const d = coastDist(x, z);
+    if (d < 6 || nearTown(x, z, 62)) continue;
     const h = heightAt(x, z);
     if (h < 0.9) continue;
     if (marshMask(x, z) > 0.4) continue;
     if (look.vines && vineMask(x, z) > 0.45) continue;
     const fm = forestMask(x, z);
-    const dens = o === 1 ? 0.35 + fm : fm > 0.35 ? 0.85 : 0.07;
+    const dens = o === 1 ? 0.3 + fm : fm > 0.35 ? 0.9 : 0.06;
     if (rng() > dens) continue;
     const s = 0.75 + rng() * 0.6;
     const usePine = look.pines && (fm > 0.35 || rng() < 0.4);
@@ -168,22 +185,23 @@ function vegetation({ world, era, group, rng, o, nearTown }) {
     world.addCollider(x, z, 0.45 * s);
   }
 
-  // bosquets, ajoncs en fleurs, tamaris du littoral
-  for (let i = 0; i < 2600; i++) {
-    const x = (rng() - 0.5) * HALF_L * 2, z = (rng() - 0.5) * 130;
-    const m = islandMask(x, z);
-    if (m < 0.02 || nearTown(x, z, 52)) continue;
+  // dunes à oyats, ajoncs en fleurs, tamaris du littoral, roseaux des marais
+  for (let i = 0; i < 9000; i++) {
+    const [x, z] = pick();
+    const d = coastDist(x, z);
+    if (d < 1 || nearTown(x, z, 52)) continue;
     const h = heightAt(x, z);
-    if (h < 0.7) continue;
+    if (h < 0.4) continue;
     const s = 0.5 + rng() * 0.8;
-    if (m < 0.12) {
-      if (rng() < 0.55) oyats.push(compose(x, h - 0.05, z, 0.9 + rng() * 0.6, 0.8 + rng() * 0.6, 0.9 + rng() * 0.6, rng() * PI));
+    const atl = atlanticSide(x, z);
+    if (atl > 0.45 && d < 30) {
+      if (rng() < 0.6) oyats.push(compose(x, h - 0.05, z, 0.9 + rng() * 0.6, 0.8 + rng() * 0.6, 0.9 + rng() * 0.6, rng() * PI));
       else if (rng() < 0.35) gorse.push(compose(x, h + 0.35 * s, z, s, s * 0.7, s));
-      else if (rng() < 0.25 && o >= 2) tamarisk.push(compose(x, h + 1.4 * s, z, 1.4 * s, 1.1 * s, 1.4 * s, rng() * PI));
-    } else if (marshMask(x, z) > 0.45) {
+      else if (rng() < 0.3 && o >= 2) tamarisk.push(compose(x, h + 1.4 * s, z, 1.4 * s, 1.1 * s, 1.4 * s, rng() * PI));
+    } else if (marshMask(x, z) > 0.45 || (d < 8 && atl < 0.4)) {
       if (rng() < 0.5) salicorne.push(compose(x, h + 0.12, z, 0.5 + rng() * 0.4, 0.25, 0.5 + rng() * 0.4, rng() * PI));
       else reeds.push(compose(x, h - 0.05, z, 0.7, 1.5 + rng() * 0.8, 0.7, rng() * PI));
-    } else if (rng() < 0.35) {
+    } else if (rng() < 0.25) {
       bushes.push(compose(x, h + 0.45 * s, z, s, s * 0.75, s, rng() * PI));
     }
   }
@@ -204,7 +222,7 @@ function vegetation({ world, era, group, rng, o, nearTown }) {
   tufts(group, oyats, grassTuftTexture(0xa8ac70), 'oyat');
   tufts(group, reeds, grassTuftTexture(0x8a8a50), 'reed');
   instanced(group, new THREE.IcosahedronGeometry(0.4, 0), flat(0x8a5a4a, 1), salicorne, false);
-  grass({ group, rng, nearTown, look });
+  grass({ group, rng, nearTown, look, pl });
 }
 
 // Noyau + cartes de feuilles partageant les mêmes matrices d'instance
@@ -223,13 +241,13 @@ function tufts(group, matrices, tex, key) {
 }
 
 // Touffes d'herbe dans les prés autour de la ville active
-function grass({ group, rng, nearTown, look }) {
+function grass({ group, rng, nearTown, look, pl }) {
   const list = [];
-  for (let i = 0; i < 16000 && list.length < 5200; i++) {
-    const x = (rng() - 0.5) * HALF_L * 2, z = (rng() - 0.5) * 130;
-    if (!nearTown(x, z, 150) || nearTown(x, z, 47)) continue;
-    const m = islandMask(x, z);
-    if (m < 0.14 || marshMask(x, z) > 0.4) continue;
+  for (let i = 0; i < 20000 && list.length < 6000; i++) {
+    const a = rng() * PI * 2, r = 47 + Math.sqrt(rng()) * 130;
+    const x = pl.x + Math.cos(a) * r, z = pl.z + Math.sin(a) * r;
+    if (nearTown(x, z, 47)) continue;
+    if (coastDist(x, z) < 8 || marshMask(x, z) > 0.4) continue;
     const h = heightAt(x, z);
     if (h < 0.9) continue;
     const s = 0.45 + rng() * 0.5;
@@ -245,16 +263,18 @@ function mix(a, b, t) {
 }
 
 // ----------------------------------------------------------------------
-//  Vignobles en rangs
+//  Vignobles en rangs (autour de la ville ; plus loin, la couleur du sol suffit)
 // ----------------------------------------------------------------------
-function vineyards({ era, group, rng, o, nearTown }) {
+function vineyards({ era, group, rng, nearTown, pl }) {
   const stalks = [], leaves = [];
   const abandoned = era.id === 'wwii';
-  for (let x = -HALF_L; x < HALF_L; x += 2.4) {
-    for (let z = -60; z < 60; z += 1.3) {
-      if (vineMask(x, z) < 0.55 || nearTown(x, z, 56)) continue;
+  const R = 260;
+  for (let x = pl.x - R; x < pl.x + R; x += 2.4) {
+    for (let z = pl.z - R; z < pl.z + R; z += 1.3) {
+      if (vineMask(x, z) < 0.55 || nearTown(x, z, 56) || !nearTown(x, z, R)) continue;
+      if (coastDist(x, z) < 10) continue;
       const h = heightAt(x, z);
-      if (h < 0.8 || islandMask(x, z) < 0.12) continue;
+      if (h < 0.8) continue;
       if (abandoned && rng() < 0.4) continue;
       stalks.push(compose(x, h + 0.35, z, 1, 1, 1));
       leaves.push(compose(x, h + 0.9, z, 0.5, 0.45, 0.75, rng() * 0.3));
@@ -268,8 +288,8 @@ function vineyards({ era, group, rng, o, nearTown }) {
 // Mulons : tas de sel récolté au bord des marais
 function saltHeaps({ group, rng, nearTown, world }) {
   const heaps = [];
-  for (let i = 0; i < 400 && heaps.length < 40; i++) {
-    const x = -170 + rng() * 140, z = -55 + rng() * 40;
+  for (let i = 0; i < 3000 && heaps.length < 90; i++) {
+    const x = rand(rng, -720, 0), z = rand(rng, -330, 40);
     if (marshMask(x, z) < 0.6 || nearTown(x, z, 50)) continue;
     const h = heightAt(x, z);
     if (h < 0.4) continue;
@@ -284,13 +304,13 @@ function saltHeaps({ group, rng, nearTown, world }) {
 //  Moulins à vent (tours de pierre chaulées)
 // ----------------------------------------------------------------------
 function windmills({ group, animated, world, nearTown, era }) {
-  const spots = [[-28, 8], [58, 6], [-100, 12], [96, -6], [-150, 6], [128, 4]];
+  const spots = [[-620, -95], [-700, -235], [-300, -115], [-250, -40], [-20, 12], [120, 45], [300, 135], [520, 250], [-505, -300], [610, 300]];
   for (const [x, z] of spots) {
-    if (nearTown(x, z, 50) || islandMask(x, z) < 0.15) continue;
+    if (nearTown(x, z, 55) || !land(x, z, 8)) continue;
     const g = new THREE.Group();
     const h = heightAt(x, z);
     g.position.set(x, h, z);
-    const tower = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.6, 8, 14), era.id === 'xix' ? MAT.whitewash() : MAT.stoneOld());
+    const tower = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.6, 8, 14), era.id === 'xix' || era.id === 'contemporaine' ? MAT.whitewash() : MAT.stoneOld());
     tower.position.y = 3.8;
     g.add(tower);
     const cap = new THREE.Mesh(new THREE.ConeGeometry(2.4, 2.4, 14), MAT.woodDark());
@@ -314,6 +334,7 @@ function windmills({ group, animated, world, nearTown, era }) {
     }
     hub.userData.noBatch = true;
     g.add(hub);
+    g.rotation.y = Math.atan2(-0.4, 1);   // ailes face au vent d'ouest
     g.traverse((m) => { if (m.isMesh) m.castShadow = true; });
     group.add(g);
     animated.push({ obj: hub, kind: 'spin', speed: 0.5 });
@@ -322,30 +343,100 @@ function windmills({ group, animated, world, nearTown, era }) {
 }
 
 // ----------------------------------------------------------------------
+//  Villages vus de loin (maisons simplifiées autour de leur église)
+// ----------------------------------------------------------------------
+function villages({ group, world, era, o, town, rng }) {
+  if (o === 1) return;            // au Néolithique, pas encore de village
+  const vg = new THREE.Group();
+  const roofMat = MAT.tiles(), roofOld = MAT.tilesOld();
+  const walls = [MAT.whitewash(), MAT.cream(), MAT.plasterOld()];
+  for (const loc of LOCATIONS) {
+    if (loc.village === false || loc.mainland || loc.id === town.id) continue;
+    const [vx, , vz] = loc.position;
+    const r2 = mulberry32(hashStr(loc.id + era.id));
+    // taille du village selon l'époque
+    const n = o === 2 ? 3 : Math.round((o === 3 ? 10 : o <= 5 ? 22 : 34) * (0.7 + r2() * 0.6));
+    const placed = [];
+    const ang = r2() * PI;
+    for (let k = 0, tries = 0; k < n && tries < n * 30; tries++) {
+      const along = (r2() - 0.5) * (12 + n * 3.2), across = (r2() - 0.5) * (8 + n * 1.6);
+      const x = vx + Math.cos(ang) * along - Math.sin(ang) * across;
+      const z = vz + Math.sin(ang) * along + Math.cos(ang) * across;
+      if (!land(x, z, 6) || placed.some((p) => Math.hypot(p[0] - x, p[1] - z) < 8)) continue;
+      placed.push([x, z]);
+      k++;
+      const w = 5 + r2() * 4, d = 5 + r2() * 2, fl = o >= 4 && r2() < 0.3 ? 2 : 1;
+      const hgt = fl * 2.9 + 0.4;
+      const hb = new THREE.Group();
+      const body = new THREE.Mesh(box(w, hgt + 0.6, d, 3), walls[Math.floor(r2() * walls.length)]);
+      body.position.y = hgt / 2 - 0.3;
+      hb.add(body);
+      const roof = new THREE.Mesh(gableRoofGeometry(w, d, Math.max(1, w * 0.36)), [o >= 5 ? roofMat : roofOld, body.material]);
+      roof.position.y = hgt;
+      hb.add(roof);
+      hb.position.set(x, heightAt(x, z), z);
+      hb.rotation.y = ang + (r2() < 0.5 ? 0 : PI / 2);
+      vg.add(hb);
+      world.addCollider(x, z, Math.min(w, d) * 0.6);
+    }
+    // église et clocher (à partir du Moyen Âge)
+    if (o >= 3 && placed.length) {
+      const [cx, cz] = [vx + 2, vz - 2];
+      if (land(cx, cz, 6)) {
+        const ch = new THREE.Group();
+        const nave = new THREE.Mesh(box(8, 7, 16, 3), MAT.stoneOld());
+        nave.position.y = 3.2;
+        ch.add(nave);
+        const nr = new THREE.Mesh(gableRoofGeometry(8, 16, 2.6), [MAT.tilesOld(), MAT.stoneOld()]);
+        nr.position.y = 6.7;
+        ch.add(nr);
+        const tower = new THREE.Mesh(box(4.4, 14, 4.4, 3), MAT.stoneOld());
+        tower.position.set(0, 7, 9);
+        ch.add(tower);
+        const spireMat = loc.id === 'ars' && o >= 4 ? flat(0x18181a, 0.6) : MAT.slate();
+        const spire = new THREE.Mesh(new THREE.ConeGeometry(3.1, loc.id === 'ars' ? 12 : 5, 8), spireMat);
+        spire.position.set(0, 14 + (loc.id === 'ars' ? 6 : 2.5), 9);
+        ch.add(spire);
+        ch.position.set(cx, heightAt(cx, cz), cz);
+        ch.rotation.y = ang;
+        vg.add(ch);
+        world.addCollider(cx, cz, 6);
+      }
+    }
+  }
+  vg.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+  batchStatic(vg);
+  group.add(vg);
+}
+
+// ----------------------------------------------------------------------
 //  Monuments visibles au loin (selon leur date de construction)
 // ----------------------------------------------------------------------
-function landmarks({ group, world, o, era }, town) {
-  const add = (fn, x, z) => {
-    if (Math.hypot(x - town.position[0], z - town.position[2]) < 70) return;
+function landmarks({ group, world, o, nearTown }) {
+  const add = (fn, x, z, r) => {
+    if (nearTown(x, z, 70)) return;
     const g = fn();
     g.position.set(x, heightAt(x, z), z);
     g.traverse((m) => { if (m.isMesh) m.castShadow = true; });
     group.add(g);
+    world.addCollider(x, z, r);
   };
+  const ph = placementOf('phare-baleines');
   // Tour des Baleines (Vauban, 1682)
   if (o >= 4) {
+    const p = localToWorld(ph, -14, -13.7);
     add(() => {
       const g = new THREE.Group();
       const t = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 3.4, 17, 14), MAT.stoneOld());
       t.position.y = 8.5; g.add(t);
       const top = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 0.8, 14), MAT.stonePale());
       top.position.y = 17.2; g.add(top);
-      world.addCollider(-202, -24, 3.6);
       return g;
-    }, -202, -24);
+    }, p.x, p.z, 3.6);
   }
   // Phare des Baleines (1854)
   if (o >= 5) {
+    const p = localToWorld(ph, 0, 4.6);
     add(() => {
       const g = new THREE.Group();
       const t = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 4, 46, 18), MAT.stonePale());
@@ -354,9 +445,8 @@ function landmarks({ group, world, o, era }, town) {
       lan.position.y = 48; g.add(lan);
       const glow = new THREE.Mesh(new THREE.SphereGeometry(1.1, 10, 8), MAT.glassLit());
       glow.position.y = 48; g.add(glow);
-      world.addCollider(-188, -10, 4.5);
       return g;
-    }, -188, -10);
+    }, p.x, p.z, 4.5);
   }
   // Fort La Prée (1625)
   if (o >= 4) {
@@ -373,12 +463,12 @@ function landmarks({ group, world, o, era }, town) {
       }
       const roof = new THREE.Mesh(gableRoofGeometry(8, 10, 3), [MAT.slate(), MAT.rampart()]);
       roof.position.y = 5.6; g.add(roof);
-      world.addCollider(54, -46, 12);
       return g;
-    }, 54, -46);
+    }, 517, 128, 12);
   }
   // Ruines de l'abbaye des Châteliers (démantelée en 1623-1625)
   if (o >= 4) {
+    const p = localToWorld(placementOf('flotte'), -40, -16);
     add(() => {
       const g = new THREE.Group();
       const facade = new THREE.Mesh(box(10, 12, 1.4, 3), MAT.stoneOld());
@@ -388,12 +478,11 @@ function landmarks({ group, world, o, era }, town) {
       const arch = new THREE.Mesh(box(3, 6, 1.6), flat(0x101010, 1));
       arch.position.y = 3; g.add(arch);
       for (const sx of [-1, 1]) {
-        const w = new THREE.Mesh(box(1.1, 4 + Math.random() * 3, 9, 3), MAT.stoneOld());
+        const w = new THREE.Mesh(box(1.1, 6, 9, 3), MAT.stoneOld());
         w.position.set(sx * 4.6, 2.5, -5); g.add(w);
       }
-      world.addCollider(40, -36, 6);
       return g;
-    }, 40, -36);
+    }, p.x, p.z, 6);
   }
 }
 
@@ -401,16 +490,23 @@ function landmarks({ group, world, o, era }, town) {
 //  Écluses à poissons : murets de pierre en arc sur l'estran
 // ----------------------------------------------------------------------
 function fishWeirs({ group }) {
-  const weirs = [[128, 46, 0.2], [96, 50, -0.1], [-196, 14, 1.2], [-60, 44, 0.05]];
-  for (const [cx, cz, rot] of weirs) {
-    for (let i = 0; i <= 14; i++) {
-      const a = PI * (0.1 + 0.8 * (i / 14));
-      const x = cx + Math.cos(a + rot) * 16, z = cz + Math.sin(a + rot) * 9;
+  const centers = [[480, 392], [545, 380], [610, 352], [-780, -262], [-735, -95], [-150, -228], [330, 30], [700, 335]];
+  for (const [cx0, cz0] of centers) {
+    // on cherche l'estran devant ce point, puis on oriente l'arc vers la côte
+    const gx = coastDist(cx0 + 2, cz0) - coastDist(cx0 - 2, cz0), gz = coastDist(cx0, cz0 + 2) - coastDist(cx0, cz0 - 2);
+    const gl = Math.hypot(gx, gz) || 1;
+    const nx = -gx / gl, nz = -gz / gl;                 // vers le large
+    const d0 = coastDist(cx0, cz0);
+    const cx = cx0 + nx * (d0 + 9), cz = cz0 + nz * (d0 + 9);
+    const base = Math.atan2(nz, nx);
+    for (let i = 0; i <= 16; i++) {
+      const a = base - PI / 2 + PI * (i / 16);
+      const x = cx + Math.cos(a) * 18, z = cz + Math.sin(a) * 10;
       const h = heightAt(x, z);
       if (h > 0.4) continue;
       const b = new THREE.Mesh(box(2.4, 1.0, 0.9), MAT.stoneDark());
       b.position.set(x, Math.max(h, -1.4) + 0.2, z);
-      b.rotation.y = -(a + rot) + PI / 2;
+      b.rotation.y = -a + PI / 2;
       b.castShadow = true;
       group.add(b);
     }
@@ -422,33 +518,79 @@ function fishWeirs({ group }) {
 // ----------------------------------------------------------------------
 function coastBunkers({ group, world, rng, nearTown }, ruined) {
   let n = 0;
-  for (let x = -180; x < 180 && n < 12; x += 22 + rng() * 10) {
-    // cherche le pied de dune côté sud
-    for (let z = 30; z < 62; z += 1.5) {
-      const m = islandMask(x, z);
-      if (m < 0.05 && heightAt(x, z) > 0.4) {
-        if (nearTown(x, z, 55)) break;
-        const g = new THREE.Group();
-        const body = new THREE.Mesh(box(6, 3, 5, 3), MAT.concrete());
-        body.position.y = 1.2;
-        g.add(body);
-        const cap = new THREE.Mesh(box(6.8, 0.6, 5.8, 3), MAT.concrete());
-        cap.position.y = 2.9;
-        g.add(cap);
-        const slit = new THREE.Mesh(box(2.2, 0.45, 0.4), MAT.black());
-        slit.position.set(0, 1.9, 2.5);
-        g.add(slit);
-        const zz = ruined ? z + 4 : z;
-        g.position.set(x, heightAt(x, zz) - (ruined ? 0.8 : 0), zz);
-        if (ruined) { g.rotation.z = (rng() - 0.5) * 0.5; g.rotation.x = 0.25; }
-        g.traverse((m2) => { if (m2.isMesh) m2.castShadow = true; });
-        group.add(g);
-        world.addCollider(x, zz, 3.6);
-        n++;
-        break;
-      }
+  for (let i = 0; i < 4000 && n < 22; i++) {
+    const x = rand(rng, -760, 760), z = rand(rng, -200, 420);
+    if (atlanticSide(x, z) < 0.7) continue;
+    const d = coastDist(x, z);
+    if (d < 4 || d > 7 || nearTown(x, z, 60) || heightAt(x, z) < 0.6) continue;
+    const gx = coastDist(x + 2, z) - coastDist(x - 2, z), gz = coastDist(x, z + 2) - coastDist(x, z - 2);
+    const face = Math.atan2(-gx, -gz);               // meurtrière tournée vers le large
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(box(6, 3, 5, 3), MAT.concrete());
+    body.position.y = 1.2;
+    g.add(body);
+    const cap = new THREE.Mesh(box(6.8, 0.6, 5.8, 3), MAT.concrete());
+    cap.position.y = 2.9;
+    g.add(cap);
+    const slit = new THREE.Mesh(box(2.2, 0.45, 0.4), MAT.black());
+    slit.position.set(0, 1.9, 2.5);
+    g.add(slit);
+    // aujourd'hui, l'érosion a emporté la dune : le bunker a glissé sur la plage
+    const bx = ruined ? x + Math.sin(face) * (d + 2) : x;
+    const bz = ruined ? z + Math.cos(face) * (d + 2) : z;
+    g.position.set(bx, heightAt(bx, bz) - (ruined ? 0.8 : 0), bz);
+    g.rotation.y = face;
+    if (ruined) { g.rotation.z = (rng() - 0.5) * 0.5; g.rotation.x = 0.25; }
+    g.traverse((m2) => { if (m2.isMesh) m2.castShadow = true; });
+    group.add(g);
+    world.addCollider(bx, bz, 3.6);
+    n++;
+  }
+}
+
+// ----------------------------------------------------------------------
+//  Le pont de l'île de Ré (1988) : 2,9 km, entre Sablanceaux et La Pallice
+// ----------------------------------------------------------------------
+function bridge({ group }) {
+  const curve = new THREE.CatmullRomCurve3(BRIDGE.map(([x, z]) => new THREE.Vector3(x, 0, z)));
+  const L = curve.getLength();
+  const n = Math.ceil(L / 3);
+  const pts = curve.getSpacedPoints(n);
+  // profil en long : le tablier s'élève jusqu'à la passe navigable
+  const deckY = (t) => 3 + 13 * Math.sin(Math.min(1, Math.max(0, (t - 0.05) / 0.9)) * PI) ** 0.8;
+  const deckMat = flat(0xc8c4bc, 0.8), pierMat = MAT.concrete(), railMat = flat(0xe8e8e4, 0.5, 0.3);
+  const bg = new THREE.Group();
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const t0 = i / n, t1 = (i + 1) / n;
+    const ya = deckY(t0), yb = deckY(t1);
+    const len = Math.hypot(b.x - a.x, b.z - a.z);
+    const seg = new THREE.Mesh(box(8, 1.4, len + 0.05), deckMat);
+    seg.position.set((a.x + b.x) / 2, (ya + yb) / 2, (a.z + b.z) / 2);
+    seg.rotation.y = Math.atan2(b.x - a.x, b.z - a.z);
+    seg.rotation.x = -Math.atan2(yb - ya, len);
+    bg.add(seg);
+    for (const s of [-1, 1]) {
+      const rail = new THREE.Mesh(box(0.15, 1.0, len + 0.05), railMat);
+      rail.position.set(0, 1.2, 0);
+      rail.position.x = s * 3.9;
+      const holder = new THREE.Group();
+      holder.position.copy(seg.position);
+      holder.rotation.copy(seg.rotation);
+      holder.add(rail);
+      bg.add(holder);
+    }
+    if (i % 6 === 0) {
+      const h = ya + 14;
+      const pier = new THREE.Mesh(box(5, h, 3, 3), pierMat);
+      pier.position.set(a.x, ya - h / 2 - 0.6, a.z);
+      pier.rotation.y = seg.rotation.y;
+      bg.add(pier);
     }
   }
+  bg.traverse((m) => { if (m.isMesh) m.castShadow = true; });
+  batchStatic(bg);
+  group.add(bg);
 }
 
 export { smoothstep };
