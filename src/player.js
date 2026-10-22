@@ -53,8 +53,8 @@ export class Player {
     this.name = id === 'exploratrice' ? 'Sacha' : id === 'aventurier' ? 'Sacha' : 'Sacha';
   }
 
-  teleport(x, z, yaw) {
-    const c = clampToIsland(x, z);
+  teleport(x, z, yaw, indoor = false) {
+    const c = indoor ? { x, z } : clampToIsland(x, z);
     this.pos.set(c.x, Math.max(heightAt(c.x, c.z), -0.2), c.z);
     this.vel.set(0, 0, 0);
     if (yaw !== undefined) { this.yaw = yaw; this.camYaw = yaw + Math.PI; }
@@ -233,7 +233,7 @@ export class Player {
       const r = api.world.resolveCollision(nx, nz, this.mode === 'bike' ? 0.5 : 0.36);
       nx = r.x; nz = r.z;
     }
-    const c = clampToIsland(nx, nz);
+    const c = api.world.indoor ? { x: nx, z: nz } : clampToIsland(nx, nz);
     const moved = Math.hypot(c.x - this.pos.x, c.z - this.pos.z);
     state.stats.distance += moved;
     this.pos.x = c.x; this.pos.z = c.z;
@@ -270,7 +270,8 @@ export class Player {
       this.bike.userData.wheels.forEach((w) => { w.rotation.x += hs * dt / 0.36; });
     }
     this.updateCamera(dt);
-    st.x = this.pos.x; st.z = this.pos.z; st.yaw = this.yaw;
+    // à l'intérieur, la sauvegarde retient la porte d'entrée
+    if (!api.world.indoor) { st.x = this.pos.x; st.z = this.pos.z; st.yaw = this.yaw; }
   }
 
   // Caméra orbitale avec évitement des murs et cadrage pendant les dialogues
@@ -301,6 +302,9 @@ export class Player {
     }
     const minY = heightAt(target.x, target.z) + 0.35;
     if (target.y < minY) target.y = minY;
+    // sous le plafond d'une pièce
+    const ind = api.world?.indoor;
+    if (ind && target.y > ind.ceil - 0.25) target.y = ind.ceil - 0.25;
     const tide = api.world?.ocean.tide ?? 0;
     if (target.y < tide + 0.3) target.y = tide + 0.3;
     this.camPos.lerp(target, 1 - Math.exp(-dt * (this.focus ? 4 : 14)));

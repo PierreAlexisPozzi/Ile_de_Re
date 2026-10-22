@@ -30,6 +30,7 @@ function hut(tb, x, z, r = 2.1, h = 1.5) {
   g.add(door);
   const rot = Math.atan2(-x, -z);   // porte tournée vers le foyer
   tb.put(g, x, z, { rot, col: r * 1.05 });
+  tb.door({ x, z, rot, front: r * 1.02, dx: 0, w: 5, d: 5, type: 'hut', name: 'Hutte' });
   return g;
 }
 
@@ -191,7 +192,7 @@ export default {
     tb.interactables[tb.interactables.length - 1].requires = 'pirogue_ok';
     tb.interactables[tb.interactables.length - 1].locked = "La pirogue de Kern fuit : elle n'est pas en état de naviguer.";
     tb.spot('rivage', -1, -15, { rot: PI });
-    tb.spot('plage-est', 22, -15);
+    tb.spot('plage-est', 15, -11);
     tb.spot('plage-ouest', -16, -16);
     tb.spot('marais', -24, -13);
     for (let i = 0; i < 6; i++) tb.rock(28 + tb.rng() * 6, -13 - tb.rng() * 3, 0.5 + tb.rng() * 0.5);

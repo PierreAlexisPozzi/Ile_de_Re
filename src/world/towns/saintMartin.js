@@ -61,8 +61,8 @@ export default {
     tb.spot('quai-est', 9, -19.5, { rot: PI });
     tb.spot('ilot', 0, -27.5);
     // maisons de l'îlot (entrepôts de sel)
-    tb.house(-3.2, -31.6, PI / 2, { style: 'cream', w: 5.6, d: 5.2, floors: 2, roof: 'tilesOld', shutter: 0x57705e, plinth: false, door: 0x4a3420 });
-    tb.house(3.2, -31.6, -PI / 2, { style: 'old', w: 5.6, d: 5.2, floors: 2, roof: 'tilesOld', shutter: 0x4a5560, plinth: false, door: 0x4a3420 });
+    tb.house(-3.2, -31.6, PI / 2, { enter: { type: 'warehouse', name: 'Entrepôt de sel' }, style: 'cream', w: 5.6, d: 5.2, floors: 2, roof: 'tilesOld', shutter: 0x57705e, plinth: false, door: 0x4a3420 });
+    tb.house(3.2, -31.6, -PI / 2, { enter: { type: 'warehouse', name: 'Entrepôt de sel' }, style: 'old', w: 5.6, d: 5.2, floors: 2, roof: 'tilesOld', shutter: 0x4a5560, plinth: false, door: 0x4a3420 });
     for (let i = 0; i < 4; i++) tb.bollard(-14 + i * 9.4, -20.6);
     // bateaux au port et flûte hollandaise au mouillage
     tb.boat(-11.5, -30, 0.1, 'chaloupe', { boardable: true, label: 'Prendre la chaloupe' });
@@ -155,6 +155,7 @@ export default {
     tb.footprint(20, 6, 10, 22, 0);
     tb.colL(20, -8, 4.4);
     tb.spot('eglise', 13, 8, { rot: -PI / 2 });
+    tb.door({ x: 20, z: 6, rot: -PI / 2, front: 5.1, dx: 2, type: 'church', name: 'Église Saint-Martin' });
     tb.spot('clocher', 15.2, -8, { rot: -PI / 2 });
 
     // ---------- l'enceinte bastionnée ----------

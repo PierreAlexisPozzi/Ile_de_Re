@@ -138,7 +138,12 @@ export class NPC {
     this.cool -= dt;
     this.char.speed = 0;
 
-    if (this.talking) {
+    if (this.hold && !this.talking) {
+      // retenu à son poste (ex. derrière le comptoir quand le joueur entre dans la boutique)
+      this.pos.set(this.hold.x, heightAt(this.hold.x, this.hold.z), this.hold.z);
+      this.turnTo(this.hold.yaw ?? 0, dt, 6);
+      this.char.setAction(this.hold.action ?? 'idle');
+    } else if (this.talking) {
       this.turnTo(Math.atan2(player.x - this.pos.x, player.z - this.pos.z), dt, 6);
       this.char.setAction('talk');
       this.char.lookAtWorld({ x: player.x, y: player.y + 1.6, z: player.z });
@@ -331,7 +336,7 @@ export class NPCManager {
       const d = Math.hypot(n.pos.x - ctx.player.x, n.pos.z - ctx.player.z);
       // au loin : on simplifie (pas d'animation fine)
       n.char.group.visible = d < 120;
-      if (d > 120 && !n.followOn) continue;
+      if (d > 120 && !n.followOn) { n.el.style.display = 'none'; continue; }
       n.update(dt, ctx);
     }
   }

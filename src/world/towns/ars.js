@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { MAT, flat } from '../materials.js';
 import { box, gableRoofGeometry } from '../builder.js';
+import { placementOf, localToWorld } from '../locations.js';
 
 const PI = Math.PI;
 
@@ -26,7 +27,7 @@ export default {
   // le chenal du port d'Ars, creusé jusqu'au Fier
   carves: [
     { x0: -9, z0: -30, x1: 9, z1: -21 },
-    { x0: -3.5, z0: -56, x1: 3.5, z1: -29 },
+    { x0: -3.5, z0: -95, x1: 3.5, z1: -29 },
   ],
   build(tb, flags) {
     tb.spot('spawn', 0, 44, { rot: PI });
@@ -76,7 +77,7 @@ export default {
       shop: { id: 'lescure', name: 'Lescure & Cie', kind: 'vitrine', color: 0x3a2a1a, goods: ['salt', 'sacks'],
         sign: { text: 'E. LESCURE & Cie', sub: 'Négoce de sels en gros · Expéditions', style: 'painted', bg: '#2a2018', fg: '#e8d090', icon: 'salt' } },
     });
-    tb.house(9, -14.5, PI, { ...xix, w: 11, d: 6, floors: 1, style: 'old', roof: 'tilesOld', flowers: false, door: 0x5a4a32, doorX: 0 });
+    tb.house(9, -14.5, PI, { ...xix, enter: { type: 'warehouse', name: 'Magasin à sel' }, w: 11, d: 6, floors: 1, style: 'old', roof: 'tilesOld', flowers: false, door: 0x5a4a32, doorX: 0 });
     tb.plaque({ text: 'MAGASIN À SEL', sub: 'Lescure & Cie', style: 'painted', bg: '#e8e0c8', fg: '#2a2018' }, 9, -17.55, PI, 2.9, 3.2);
     tb.saltHeap(14, -18.3, 0.55);
     tb.spot('magasin', 9, -19.2, { rot: PI });
@@ -124,7 +125,7 @@ export default {
     tb.row(2.5, 46, 2.5, 34.2, 1, { ...xix, d: 6.4, shutters: [0x4f7f5f, 0x6a8a9a, 0x3f6a52] });
 
     // ---------- place de l'église, mairie, hôtel ----------
-    tb.house(-8, -5, PI / 2, { ...xix, w: 10, d: 7, floors: 2, style: 'cream', quoins: true, shutter: 0x6a6a6a, door: 0x2a2a2a, doorX: 0, lantern: true, flowers: false });
+    tb.house(-8, -5, PI / 2, { ...xix, enter: { type: 'mairie', name: 'Mairie' }, w: 10, d: 7, floors: 2, style: 'cream', quoins: true, shutter: 0x6a6a6a, door: 0x2a2a2a, doorX: 0, lantern: true, flowers: false });
     tb.plaque({ text: 'MAIRIE', style: 'carved', bg: '#e8e0c8', fg: '#2a2a2a' }, -4.47, -5, PI / 2, 3.1, 1.8);
     tb.flagpole(-3.6, -8.2, tricolor(), 7);
     tb.spot('mairie', -1.6, -5, { rot: -PI / 2 });
@@ -191,6 +192,7 @@ export default {
     tb.footprint(25.5, -4, 17, 9, 0);
     tb.colL(14.5, -4, 3.3);
     tb.spot('eglise', 10.6, -2.2, { rot: -PI / 2 });
+    tb.door({ x: 17, z: -4, rot: -PI / 2, front: 5.05, dx: 0, type: 'church', name: 'Église Saint-Étienne' });
 
     // ---------- ruelles blanches aux roses trémières ----------
     tb.row(-40, 10, -10.5, 10, -1, { ...xix, hollyhocks: true, shutters: [0x4f7f5f, 0x6a8a9a, 0x3f6a52, 0x7a9a7a] });
@@ -200,7 +202,7 @@ export default {
     tb.spot('maison-jeanne', -20, 12.2, { rot: 0 });
 
     // l'école communale
-    tb.house(-31, 18, PI, { ...xix, w: 8, d: 6.6, floors: 1, style: 'cream', shutter: 0x4a5560, door: 0x2a3a4a, doorX: 0, flowers: false, quoins: true });
+    tb.house(-31, 18, PI, { ...xix, enter: { type: 'school', name: 'École communale' }, w: 8, d: 6.6, floors: 1, style: 'cream', shutter: 0x4a5560, door: 0x2a3a4a, doorX: 0, flowers: false, quoins: true });
     tb.plaque({ text: 'ÉCOLE COMMUNALE', style: 'carved', bg: '#e8e0c8', fg: '#2a2a2a' }, -31, 14.67, 0, 3.0, 2.6);
     if (flags.xix_ecole) tb.plaque({ text: 'ÉCOLE DE FILLES', style: 'painted', bg: '#f0ead8', fg: '#2a3a6a' }, -31, 14.67, 0, 2.55, 2.2);
     tb.spot('ecole', -28, 12.6, { rot: 0 });
@@ -293,7 +295,8 @@ export default {
     tb.spot('ecluse1', -14, -41, { rot: PI });
 
     // le phare des Baleines, au bout de l'île (gardien)
-    tb.spot('phare', -104, 0.5, { rot: -PI / 2 });
+    const ph = localToWorld(placementOf('phare-baleines'), 9, 4.6);
+    tb.spotW('phare', ph.x, ph.z, { rot: 0 });
 
     // le photographe ambulant et sa chambre sur trépied
     const cam = new THREE.Group();

@@ -338,8 +338,9 @@ function spawnFrigate(api) {
   const f = buildBoat('frigate');
   f.name = 'fregate';
   const s = api.world.spots.batterie;
-  f.position.set(s.x - 20, 0.1, s.z - 70);
-  f.rotation.y = Math.PI / 2;
+  const o = api.world.offset(-20, -70);
+  f.position.set(s.x + o.x, 0.1, s.z + o.z);
+  f.rotation.y = Math.PI / 2 + (api.world.townRot ?? 0);
   f.userData.noBatch = true;
   f.userData.bob = 1;
   api.world.eraGroup.add(f);
@@ -351,8 +352,9 @@ function removeFrigate(api) {
   const t0 = performance.now();
   api.world.animated.push({ obj: f, kind: 'custom', update: () => {
     const k = (performance.now() - t0) / 1000;
-    f.position.x -= 0.15;
-    f.position.z -= 0.08;
+    const o = api.world.offset(-0.15, -0.08);
+    f.position.x += o.x;
+    f.position.z += o.z;
     if (k > 20) f.visible = false;
   } });
 }

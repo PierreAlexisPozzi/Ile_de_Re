@@ -16,7 +16,8 @@ export function resolveAt(at) {
   if (Array.isArray(at)) {
     const s = api.world?.spots[at[0]];
     if (!s) { console.warn('Point inconnu :', at[0]); return null; }
-    const x = s.x + (at[1] ?? 0), z = s.z + (at[2] ?? 0);
+    const o = api.world.offset ? api.world.offset(at[1] ?? 0, at[2] ?? 0) : { x: at[1] ?? 0, z: at[2] ?? 0 };
+    const x = s.x + o.x, z = s.z + o.z;
     return { x, z, y: heightAt(x, z) };
   }
   if (at.npc) {

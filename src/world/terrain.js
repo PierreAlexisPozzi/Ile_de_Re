@@ -6,69 +6,100 @@
 
 import * as THREE from 'three';
 import { fbm, smoothstep, clamp } from '../core/rng.js';
+import { coastDist, atlanticSide, fordFactor, WORLD } from './geo/shape.js';
 import { grassDetailTexture } from '../gfx/textures.js';
 
-export const HALF_L = 210;
-export const HALF_W = 58;
-export const TERRAIN_W = 470;
-export const TERRAIN_D = 170;
+// Fenêtre du terrain (l'île réelle à l'échelle 1 unité ≈ 15 m, plus la côte
+// continentale de La Rochelle à l'est, au bout du pont)
+export const TX0 = -860, TZ0 = -470, TSTEP = 3, TNX = 648, TNZ = 314;
+export const TX1 = TX0 + TNX * TSTEP, TZ1 = TZ0 + TNZ * TSTEP;
+export { WORLD };
 
 // ---------- Masques géographiques ----------
-export function islandMask(x, z) {
-  const nx = x / HALF_L, nz = z / HALF_W;
-  let m = 1 - Math.sqrt(nx * nx * 0.92 + nz * nz);
-  m -= Math.exp(-(((x + 40) / 16) ** 2)) * 0.38;              // isthme du Martray
-  m -= Math.exp(-(((x + 134) / 24) ** 2 + ((z + 54) / 11) ** 2)) * 0.55; // anse du Fier d'Ars
-  m += Math.exp(-(((x + 190) / 18) ** 2 + ((z + 6) / 26) ** 2)) * 0.12;  // pointe des Baleines
-  m += (fbm(x * 0.02 + 10, z * 0.02, 4, 7) - 0.5) * 0.2;
-  return m;
-}
+// Distance à la côte de l'époque (unités), positive à terre
+export { coastDist, atlanticSide };
+// compatibilité : 0 sur la côte, 1 à 60 unités dans les terres
+export function islandMask(x, z) { return clamp(coastDist(x, z) / 60, -1, 1); }
 
-// Marais (Fier d'Ars, Lilleau des Niges, Loix) : terres basses à fleur d'eau
+function ell(x, z, cx, cz, rx, rz, a = 0) {
+  const c = Math.cos(a), s = Math.sin(a);
+  const dx = x - cx, dz = z - cz;
+  const u = (dx * c + dz * s) / rx, v = (-dx * s + dz * c) / rz;
+  return Math.exp(-(u * u + v * v));
+}
+// Marais (salants ou naturels) : autour du Fier d'Ars, Loix, Lilleau des Niges, La Couarde
 export function marshMask(x, z) {
-  const a = Math.exp(-(((x + 128) / 40) ** 2 + ((z + 36) / 16) ** 2));
-  const b = Math.exp(-(((x + 42) / 18) ** 2 + ((z + 28) / 12) ** 2));
-  const c = Math.exp(-(((x + 92) / 18) ** 2 + ((z + 30) / 10) ** 2));
-  return Math.max(a, b * 0.9, c * 0.8);
+  return Math.max(
+    ell(x, z, -500, -62, 120, 42),          // entre Ars et le Fier
+    ell(x, z, -575, -170, 38, 75, 0.2),     // rive ouest du Fier (Saint-Clément)
+    ell(x, z, -440, -245, 72, 34),          // Lilleau des Niges, Les Portes
+    ell(x, z, -240, -130, 95, 55),          // Loix
+    ell(x, z, -300, -40, 95, 26),           // le Martray, La Couarde
+    ell(x, z, -80, -50, 70, 20),            // fond de la Fosse de Loix
+  ) * (1 - smoothstep(0.35, 0.8, atlanticSide(x, z)) * 0.6);
 }
-// Vignobles : centre-sud (Bois-Plage, La Couarde) et est (Sainte-Marie, La Flotte)
+// Vignobles : La Couarde, Le Bois-Plage, Saint-Martin, La Flotte, Sainte-Marie
 export function vineMask(x, z) {
-  const a = Math.exp(-(((x - 30) / 50) ** 2 + ((z - 12) / 18) ** 2));
-  const b = Math.exp(-(((x - 100) / 34) ** 2 + ((z - 0) / 20) ** 2));
-  const c = Math.exp(-(((x + 10) / 26) ** 2 + ((z - 20) / 12) ** 2));
-  return Math.max(a, b, c * 0.8);
+  return Math.max(
+    ell(x, z, -40, 50, 90, 32, -0.3),
+    ell(x, z, 130, 60, 120, 45, -0.3),
+    ell(x, z, 330, 180, 110, 60, -0.5),
+    ell(x, z, 570, 270, 80, 45, -0.3),
+    ell(x, z, -650, -120, 48, 40) * 0.9,
+  );
 }
-// Bois et pinèdes : Trousse-Chemise (nord-ouest), Lizay, bois de la Combe à l'eau
+// Bois et pinèdes : Trousse-Chemise, le Lizay, dunes boisées de la côte sud
 export function forestMask(x, z) {
-  const a = Math.exp(-(((x + 112) / 20) ** 2 + ((z + 4) / 14) ** 2));
-  const b = Math.exp(-(((x + 158) / 16) ** 2 + ((z - 18) / 12) ** 2));
-  const c = Math.exp(-(((x - 52) / 20) ** 2 + ((z - 30) / 9) ** 2));
-  const d = Math.exp(-(((x + 20) / 14) ** 2 + ((z - 34) / 8) ** 2));
-  return Math.max(a, b, c, d);
+  return Math.max(
+    ell(x, z, -415, -405, 55, 20, 0.3),
+    ell(x, z, -530, -410, 55, 18, -0.1),
+    ell(x, z, -705, -150, 22, 60, 0.45),
+    ell(x, z, -20, 110, 120, 16, -0.36),
+    ell(x, z, 230, 205, 120, 16, -0.5),
+  );
 }
 
 export function rawHeight(x, z) {
-  const m = islandMask(x, z);
-  if (m < 0) return -3 + m * 7;
-  let h = 0.55 + m * 2.2 + (fbm(x * 0.06, z * 0.06, 3, 21) - 0.5) * 0.5;
-  // cordon de dunes, plus haut sur la côte sud (Pertuis d'Antioche)
-  const band = smoothstep(0.0, 0.05, m) * (1 - smoothstep(0.1, 0.2, m));
-  const south = z > 0 ? 1 : 0.35;
-  h += band * south * fbm(x * 0.05, z * 0.05, 3, 13) * 4.2;
-  // marais : terres basses
+  const d = coastDist(x, z);
+  const atl = atlanticSide(x, z);
+  if (d < 0) {
+    // estran en pente douce : large au nord et dans le Fier, plus court face à l'Atlantique
+    const slope = 0.035 + atl * 0.055;
+    return Math.max(-16, 0.12 + d * slope);
+  }
+  let h = 0.12 + Math.min(d, 6) * 0.11;
+  h += smoothstep(4, 45, d) * 1.4;
+  h += (fbm(x * 0.018, z * 0.018, 3, 21) - 0.5) * 1.3 * smoothstep(6, 35, d);
+  // cordon dunaire face à l'Atlantique
+  const dune = atl * smoothstep(1.5, 7, d) * (1 - smoothstep(16, 42, d));
+  h += dune * (1.8 + fbm(x * 0.035, z * 0.035, 3, 13) * 7.5);
+  // marais : terres basses à fleur d'eau
   const mm = marshMask(x, z);
-  h = h * (1 - mm * 0.75) + mm * 0.62 * 0.75;
+  h = h + (0.55 + (fbm(x * 0.05, z * 0.05, 2, 9) - 0.5) * 0.2 - h) * Math.min(1, mm * 1.15) * smoothstep(1, 6, d);
+  // gués du Moyen Âge : vase découverte à marée basse
+  const ford = fordFactor(x, z);
+  if (ford > 0) h = h + (-0.05 - h) * ford;
   return h;
 }
 
 // ---------- Aplanissement de la ville active et bassins creusés ----------
 let flat = null;      // { x, z, r, h }
-let carves = [];      // { x0, z0, x1, z1, depth }
+let carves = [];      // repère local de la ville : { x0, z0, x1, z1, depth } ou { cx, cz, r, depth }
+let carveT = { x: 0, z: 0, c: 1, s: 0 };
 
 export function setTownFlatten(x, z, r, h) { flat = { x, z, r, h }; }
-export function setCarves(list) { carves = list || []; }
+// rot : orientation de la ville (les bassins sont décrits dans son repère local)
+export function setCarves(list, tx = 0, tz = 0, rot = 0) {
+  carves = list || [];
+  carveT = { x: tx, z: tz, c: Math.cos(rot), s: Math.sin(rot) };
+}
+
+// Intérieur visité : le sol de la pièce remplace le relief
+let indoor = null;
+export function setIndoor(b) { indoor = b; }
 
 export function heightAt(x, z) {
+  if (indoor && x > indoor.x0 && x < indoor.x1 && z > indoor.z0 && z < indoor.z1) return indoor.y;
   let h = rawHeight(x, z);
   if (flat && h > 0) {
     const d = Math.hypot(x - flat.x, z - flat.z);
@@ -78,11 +109,16 @@ export function heightAt(x, z) {
       h = h + (flat.h - h) * w;
     }
   }
-  for (const c of carves) {
-    if (c.r !== undefined) {
-      if (Math.hypot(x - c.cx, z - c.cz) < c.r) h = Math.min(h, c.depth);
-    } else if (x > c.x0 && x < c.x1 && z > c.z0 && z < c.z1) {
-      h = Math.min(h, c.depth);
+  if (carves.length) {
+    // monde -> repère local de la ville (inverse de la rotation Y)
+    const dx = x - carveT.x, dz = z - carveT.z;
+    const lx = dx * carveT.c - dz * carveT.s, lz = dx * carveT.s + dz * carveT.c;
+    for (const c of carves) {
+      if (c.r !== undefined) {
+        if (Math.hypot(lx - c.cx, lz - c.cz) < c.r) h = Math.min(h, c.depth);
+      } else if (lx > c.x0 && lx < c.x1 && lz > c.z0 && lz < c.z1) {
+        h = Math.min(h, c.depth);
+      }
     }
   }
   return h;
@@ -90,27 +126,28 @@ export function heightAt(x, z) {
 
 // ---------- Couleurs du sol selon l'époque ----------
 const C = (hex) => new THREE.Color(hex);
-const SAND = C(0xe2cf9e), WETSAND = C(0xbfae84), DUNE = C(0xcfc392);
+const SAND = C(0xe2cf9e), WETSAND = C(0xbfae84), DUNE = C(0xd2c696), MUD = C(0x8a8068);
 const MARSH = C(0x7a8a6e), SALTPAN = C(0xc4d0cc), BUND = C(0x8a8064);
 const tmp = new THREE.Color();
 
 export function terrainColor(x, z, h, look) {
   const out = new THREE.Color();
-  if (h < 0.15) return out.copy(WETSAND);
-  const m = islandMask(x, z);
-  if (h < 0.75 && m < 0.06) return out.copy(SAND);
+  const d = coastDist(x, z);
+  const atl = atlanticSide(x, z);
+  if (h < 0.18) return out.copy(WETSAND).lerp(MUD, 1 - atl);
   const grass = tmp.set(look.ground);
-  // cordon dunaire
-  if (m < 0.12) {
-    const t = smoothstep(0.03, 0.12, m);
-    return out.copy(DUNE).lerp(grass, t * 0.7);
+  // plage et cordon dunaire (côte atlantique), vase et prés salés ailleurs
+  if (d < 3.5) return out.copy(atl > 0.5 ? SAND : MUD).lerp(grass, atl > 0.5 ? 0 : 0.35);
+  if (atl > 0.4 && d < 40) {
+    const t = smoothstep(14, 40, d);
+    return out.copy(DUNE).lerp(grass, t * 0.85);
   }
   const mm = marshMask(x, z);
-  if (mm > 0.45 && h < 1.2) {
-    if (look.saltPans && mm > 0.55) {
+  if (mm > 0.42 && h < 1.2) {
+    if (look.saltPans && mm > 0.5) {
       // mosaïque de bassins (œillets) et de bossis
-      const cx = Math.floor((x + 400) / 5), cz = Math.floor((z + 400) / 5);
-      const edge = ((x + 400) % 5) < 0.8 || ((z + 400) % 5) < 0.8;
+      const cx = Math.floor((x + 2000) / 5), cz = Math.floor((z + 2000) / 5);
+      const edge = ((x + 2000) % 5) < 0.8 || ((z + 2000) % 5) < 0.8;
       if (edge) return out.copy(BUND);
       return out.copy((cx + cz) % 3 === 0 ? MARSH : SALTPAN);
     }
@@ -118,7 +155,7 @@ export function terrainColor(x, z, h, look) {
   }
   const vm = vineMask(x, z);
   if (look.vines && vm > 0.5) {
-    const row = Math.floor((x + 400) / 2.2) % 2 === 0;
+    const row = Math.floor((x + 2000) / 2.2) % 2 === 0;
     return out.copy(row ? C(0x7e6a42) : C(look.vineGreen ?? 0x6a7a3a));
   }
   const fm = forestMask(x, z);
@@ -129,36 +166,185 @@ export function terrainColor(x, z, h, look) {
 }
 
 // ======================================================================
-//  TERRAIN
+//  TERRAIN : grille globale (3 unités) + maillage fin autour de la ville
 // ======================================================================
+function gridGeometry(x0, z0, nx, nz, step) {
+  const pos = new Float32Array((nx + 1) * (nz + 1) * 3);
+  const uv = new Float32Array((nx + 1) * (nz + 1) * 2);
+  let k = 0, u = 0;
+  for (let j = 0; j <= nz; j++) {
+    for (let i = 0; i <= nx; i++) {
+      pos[k++] = x0 + i * step; pos[k++] = 0; pos[k++] = z0 + j * step;
+      uv[u++] = i / nx; uv[u++] = 1 - j / nz;
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(pos.length), 3));
+  g.setAttribute('aSand', new THREE.BufferAttribute(new Float32Array(pos.length / 3), 1));
+  return g;
+}
+
+// Part de sable/vase d'une couleur de sol (pour le choix de la texture de détail)
+function sandiness(c) {
+  const sat = Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b);
+  return c.g > c.r * 1.08 ? 0 : Math.min(1, Math.max(0, (c.r + c.g) * 0.9 - 0.75 + (sat < 0.12 ? 0.3 : 0)));
+}
+function gridIndex(nx, nz, skip) {
+  const idx = [];
+  for (let j = 0; j < nz; j++) {
+    for (let i = 0; i < nx; i++) {
+      if (skip && skip(i, j)) continue;
+      const a = j * (nx + 1) + i, b = a + 1, c = a + nx + 1, d = c + 1;
+      idx.push(a, c, b, b, c, d);
+    }
+  }
+  return idx.length > 65535 ? new THREE.Uint32BufferAttribute(idx, 1) : new THREE.Uint16BufferAttribute(idx, 1);
+}
+
+// Textures de détail en niveaux de gris (moyenne ≈ 0,5) : brins d'herbe, grain
+// et rides du sable, et une variation lente qui casse la répétition
+function detailCanvas(size, draw) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#808080';
+  ctx.fillRect(0, 0, size, size);
+  draw(ctx, size);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 8;
+  return t;
+}
+function grassDetail() {
+  return detailCanvas(256, (ctx, S) => {
+    for (let i = 0; i < 5000; i++) {
+      const x = Math.random() * S, y = Math.random() * S, l = 2 + Math.random() * 5, v = 70 + Math.random() * 120;
+      ctx.strokeStyle = `rgb(${v},${v},${v})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + (Math.random() - 0.5) * 2, y - l); ctx.stroke();
+    }
+  });
+}
+function sandDetail() {
+  return detailCanvas(256, (ctx, S) => {
+    const img = ctx.getImageData(0, 0, S, S);
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const ripple = Math.sin((y + Math.sin(x * 0.05) * 6) * 0.42) * 22;
+      const v = 128 + ripple + (Math.random() - 0.5) * 50;
+      const k = (y * S + x) * 4;
+      img.data[k] = img.data[k + 1] = img.data[k + 2] = v;
+    }
+    ctx.putImageData(img, 0, 0);
+  });
+}
+function macroDetail() {
+  return detailCanvas(128, (ctx, S) => {
+    for (let i = 0; i < 260; i++) {
+      const v = 100 + Math.random() * 56;
+      ctx.fillStyle = `rgba(${v},${v},${v},0.25)`;
+      ctx.beginPath(); ctx.arc(Math.random() * S, Math.random() * S, 6 + Math.random() * 22, 0, Math.PI * 2); ctx.fill();
+    }
+  });
+}
+
 export class Terrain {
   constructor(parent) {
-    const segX = 300, segZ = Math.round(segX * TERRAIN_D / TERRAIN_W);
-    const geo = new THREE.PlaneGeometry(TERRAIN_W, TERRAIN_D, segX, segZ);
-    geo.rotateX(-Math.PI / 2);
-    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count * 3), 3));
-    const mat = new THREE.MeshStandardMaterial({
-      vertexColors: true, map: grassDetailTexture(110), roughness: 1, metalness: 0,
-    });
-    this.mesh = new THREE.Mesh(geo, mat);
+    this.parent = parent;
+    const geo = gridGeometry(TX0, TZ0, TNX, TNZ, TSTEP);
+    geo.setIndex(gridIndex(TNX, TNZ));
+    this.mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.97, metalness: 0 });
+    const uni = { tGrass: { value: grassDetail() }, tSand: { value: sandDetail() }, tMacro: { value: macroDetail() } };
+    this.mat.onBeforeCompile = (sh) => {
+      Object.assign(sh.uniforms, uni);
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute float aSand;\nvarying float vSand;\nvarying vec3 vWPos;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSand = aSand;\nvWPos = (modelMatrix * vec4(position, 1.0)).xyz;');
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform sampler2D tGrass, tSand, tMacro;\nvarying float vSand;\nvarying vec3 vWPos;')
+        .replace('#include <color_fragment>', `#include <color_fragment>
+          vec2 wp = vWPos.xz;
+          float g = texture2D(tGrass, wp * 0.22).r * 0.55 + texture2D(tGrass, wp * 0.05).r * 0.45;
+          float sd = texture2D(tSand, wp * 0.09).r * 0.6 + texture2D(tSand, wp * 0.31).r * 0.4;
+          float mac = texture2D(tMacro, wp * 0.004).r * 0.55 + texture2D(tMacro, wp * 0.021).r * 0.45;
+          float det = (mix(g, sd, vSand) - 0.5) * 2.6 + 1.0;
+          diffuseColor.rgb *= det * (0.7 + 0.6 * mac);`);
+    };
+    this.mesh = new THREE.Mesh(geo, this.mat);
     this.mesh.receiveShadow = true;
     parent.add(this.mesh);
+    this.patch = null;
   }
 
-  refresh(look) {
-    const g = this.mesh.geometry;
-    const pos = g.attributes.position, col = g.attributes.color;
+  fill(g, look) {
+    const pos = g.attributes.position, col = g.attributes.color, sand = g.attributes.aSand;
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i);
       const h = heightAt(x, z);
       pos.setY(i, h);
       const c = terrainColor(x, z, h, look);
       col.setXYZ(i, c.r, c.g, c.b);
+      sand.array[i] = sandiness(c);
     }
     pos.needsUpdate = true;
     col.needsUpdate = true;
+    sand.needsUpdate = true;
     g.computeVertexNormals();
     g.computeBoundingSphere();
+  }
+
+  // refresh(look, { x, z, half }) : zone fine (1 unité) autour de la ville
+  refresh(look, focus) {
+    const g = this.mesh.geometry;
+    if (this.patch) { this.patch.geometry.dispose(); this.parent.remove(this.patch); this.patch = null; }
+    let skip = null;
+    if (focus) {
+      const i0 = Math.floor((focus.x - focus.half - TX0) / TSTEP), i1 = Math.ceil((focus.x + focus.half - TX0) / TSTEP);
+      const j0 = Math.floor((focus.z - focus.half - TZ0) / TSTEP), j1 = Math.ceil((focus.z + focus.half - TZ0) / TSTEP);
+      skip = (i, j) => i >= i0 && i < i1 && j >= j0 && j < j1;
+      const px0 = TX0 + i0 * TSTEP, pz0 = TZ0 + j0 * TSTEP;
+      const nx = (i1 - i0) * TSTEP, nz = (j1 - j0) * TSTEP;
+      const pg = gridGeometry(px0, pz0, nx, nz, 1);
+      pg.setIndex(gridIndex(nx, nz));
+      this.fill(pg, look);
+      this.patch = new THREE.Mesh(pg, this.mat);
+      this.patch.receiveShadow = true;
+      this.patch.add(this.skirtMesh(px0, pz0, nx, nz, look));
+      this.parent.add(this.patch);
+    }
+    g.setIndex(gridIndex(TNX, TNZ, skip));
+    this.fill(g, look);
+  }
+
+  skirtMesh(x0, z0, nx, nz, look) {
+    const ring = [];
+    for (let i = 0; i < nx; i++) ring.push([x0 + i, z0]);
+    for (let j = 0; j < nz; j++) ring.push([x0 + nx, z0 + j]);
+    for (let i = nx; i > 0; i--) ring.push([x0 + i, z0 + nz]);
+    for (let j = nz; j > 0; j--) ring.push([x0, z0 + j]);
+    ring.push(ring[0]);
+    const pos = [], col = [], idx = [], sd = [];
+    for (const [x, z] of ring) {
+      const h = heightAt(x, z);
+      const c = terrainColor(x, z, h, look);
+      pos.push(x, h, z, x, h - 2.5, z);
+      col.push(c.r, c.g, c.b, c.r, c.g, c.b);
+      const k = sandiness(c);
+      sd.push(k, k);
+    }
+    for (let k = 0; k < ring.length - 1; k++) {
+      const a = k * 2;
+      idx.push(a, a + 1, a + 2, a + 2, a + 1, a + 3, a, a + 2, a + 1, a + 2, a + 3, a + 1);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    g.setAttribute('aSand', new THREE.Float32BufferAttribute(sd, 1));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(ring.length * 4), 2));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return new THREE.Mesh(g, this.mat);
   }
 }
 
@@ -195,15 +381,16 @@ function waterNormalMap() {
   ctx.putImageData(img, 0, 0);
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(60, 60);
+  t.repeat.set(140, 80);
   return t;
 }
 
 export class Ocean {
   constructor(parent) {
-    const W = 1100, D = 800;
-    const geo = new THREE.PlaneGeometry(W, D, 260, 190);
+    const W = 2600, D = 1500;
+    const geo = new THREE.PlaneGeometry(W, D, 420, 240);
     geo.rotateX(-Math.PI / 2);
+    geo.translate(100, 0, 0);
     // profondeur du fond sous chaque sommet (couleur et écume)
     const pos = geo.attributes.position;
     const depth = new Float32Array(pos.count);
@@ -354,7 +541,7 @@ export class Sky {
           gl_FragColor = vec4(col, 1.0);
         }`,
     });
-    this.mesh = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 16), mat);
+    this.mesh = new THREE.Mesh(new THREE.SphereGeometry(1700, 32, 16), mat);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = -1;
     scene.add(this.mesh);
@@ -364,5 +551,5 @@ export class Sky {
 }
 
 export function clampToIsland(x, z) {
-  return { x: clamp(x, -HALF_L - 40, HALF_L + 40), z: clamp(z, -HALF_W - 45, HALF_W + 45) };
+  return { x: clamp(x, TX0 + 20, TX1 - 20), z: clamp(z, TZ0 + 20, TZ1 - 20) };
 }

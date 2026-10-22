@@ -56,6 +56,43 @@ que tu as sauvé (le vase de Néa, la mosaïque, la charte, les plans de
 Vauban, l'école d'Ars, le carnet de croquis), et la finale dépend des
 preuves et des vérités rassemblées en chemin.
 
+## La vraie île, au fil du temps
+
+- L'île reprend son **vrai contour** : relation OpenStreetMap « Île de Ré », © contributeurs OpenStreetMap, licence ODbL.
+  En face, on voit la **côte de La Rochelle** (limites communales de Charente-Maritime, france-geojson).
+  Une unité du monde vaut environ 15 m. Les villes, elles, sont à l'échelle humaine.
+- Le relief découle de la côte : plages et dunes face à l'Atlantique, vasières au nord et dans le Fier d'Ars, marais salants, vignes et pinèdes à leur place réelle.
+  Les villages des autres époques se dessinent au loin, reliés par les routes réelles.
+- **La forme de l'île change selon l'époque.** Cette reconstitution est approximative.
+  - Au Néolithique, la mer est plus basse et l'île n'est qu'un chapelet de trois îles (Ars, Loix, Ré).
+  - Dans l'Antiquité, des chenaux séparent encore ces trois îles.
+  - Au Moyen Âge, ces chenaux deviennent des gués qui se découvrent à marée basse.
+  - À partir du XVIIᵉ siècle, les marais salants ont soudé l'île.
+  - Aujourd'hui, les dunes reculent sous l'érosion et le pont (1988) relie l'île au continent.
+- La **carte** (`M`) montre la vraie forme de l'île avec la frise « L'île au fil du temps ».
+  Un clic sur une époque affiche la forme de l'île à ce moment-là, avec une explication.
+
+## Entrer dans les bâtiments
+
+`E` devant une porte fait entrer dans le bâtiment. Chaque pièce est meublée selon son usage et son époque :
+
+- maisons : cheminée, lit, vaisselier, horloge comtoise en 1862, poste de T.S.F. en 1943 ;
+- boutiques (le commerçant attend derrière son comptoir), cafés et tavernes ;
+- forge et horlogerie ;
+- églises (vitraux, bancs où se recueillir), écoles (leçon du jour au tableau), mairies ;
+- bureaux, dispensaire, entrepôts de sel et d'amphores ;
+- huttes néolithiques, blockhaus, musée du phare.
+
+La lumière du jour entre par les fenêtres. Chaque intérieur contient un objet du quotidien à examiner.
+
+## Rendu
+
+- Éclairage d'ambiance tiré du ciel : reflets sur l'eau, le verre et le métal.
+- Occlusion ambiante, halo des lumières, étalonnage des couleurs et anticrénelage.
+- Textures procédurales de pierre, d'enduit, de sable et d'herbe, avec cartes de normales.
+
+La qualité (Échap → Options) règle ces effets. Elle baisse automatiquement si l'image devient trop lente.
+
 ## Ce que contient le jeu
 
 - **Personnages** : squelette articulé (bassin, colonne, cou, épaules,
@@ -90,7 +127,7 @@ preuves et des vérités rassemblées en chemin.
 | `Z Q S D` / `W A S D` / flèches | Se déplacer |
 | `Maj` | Courir |
 | `Espace` | Sauter (ou passer une réplique) |
-| `E` | Parler, ramasser, interagir, lire une affiche, commercer |
+| `E` | Parler, ramasser, interagir, lire une affiche, commercer, entrer dans un bâtiment |
 | `1` … `4` | Choisir une réponse dans un dialogue |
 | `Tab` | Sac |
 | `J` | Journal de quêtes |
@@ -110,6 +147,7 @@ index.html               Point d'entrée (HUD, dialogues, panneaux)
 style.css                Interface
 fonts/                   Polices d'époque (licences libres, voir LICENCES.md)
 vendor/three.module.js   Three.js r160 embarqué
+vendor/jsm/              Modules de post-traitement de Three.js r160
 src/
   main.js                Initialisation, boucle de jeu, voyages dans le temps
   player.js              Joueur à la 3ᵉ personne : marche, nage, vélo, bateau
@@ -119,7 +157,9 @@ src/
   characters/            Squelette, visages, costumes, accessoires, animations,
                          garde-robe par époque (wardrobe.js)
   world/                 Terrain, océan, ciel, paysage, faune, matériaux,
-                         constructeur de villes (builder.js)
+                         constructeur de villes (builder.js), intérieurs
+    geo/                 Contour réel de l'île (coast.js) et sa forme
+                         selon les époques (shape.js)
     towns/               Une ville par époque
   npc/                   PNJ : routines, déplacements, réactions, bulles
   systems/               Quêtes, dialogues, actions, interactions, inventaire,

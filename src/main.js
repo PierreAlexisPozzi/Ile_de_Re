@@ -6,6 +6,8 @@ import { state, S, save, load, hasSave, resetState } from './core/state.js';
 import { on, emit } from './core/events.js';
 import { initInput, endFrame, releasePointer } from './core/input.js';
 import { World } from './world/world.js';
+import { Interiors } from './world/interiors.js';
+import { RenderPipeline } from './gfx/render.js';
 import { heightAt } from './world/terrain.js';
 import { LOCATION } from './world/locations.js';
 import { Player } from './player.js';
@@ -36,11 +38,14 @@ renderer.toneMappingExposure = 1.0;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 1600);
+const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 2600);
+const pipeline = new RenderPipeline(renderer, scene, camera);
 
 function applyQuality() {
   const q = state.options.quality;
-  renderer.setPixelRatio(Math.min(devicePixelRatio, q === 'high' ? 2 : q === 'medium' ? 1.25 : 0.85));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, q === 'high' ? 1.5 : q === 'medium' ? 1.1 : 0.85));
+  renderer.setSize(innerWidth, innerHeight);
+  if (pipeline.quality !== q || !pipeline.composer) pipeline.setQuality(q);
   renderer.shadowMap.enabled = q !== 'low';
   if (dayNight) {
     dayNight.sun.castShadow = q !== 'low';
@@ -54,6 +59,7 @@ function applyQuality() {
 }
 function resize() {
   renderer.setSize(innerWidth, innerHeight);
+  pipeline.resize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
 }
@@ -72,7 +78,8 @@ let dayNight = null;
 const audio = new AudioManager();
 const cinematic = new Cinematic(camera);
 const ui = new UI();
-Object.assign(api, { world, player, npcs, quests, dialogue, questWorld, ui, audio, cinematic, camera, scene, renderer });
+const interiors = new Interiors(world, scene);
+Object.assign(api, { world, player, npcs, quests, dialogue, questWorld, ui, audio, cinematic, camera, scene, renderer, interiors });
 api.applyQuality = applyQuality;
 api.on = on;
 initInput(canvas);
@@ -97,6 +104,7 @@ async function travel(eraId, opts = {}) {
     await new Promise((r) => setTimeout(r, 750));
   }
   if (dialogue.isOpen()) dialogue.abort();
+  if (interiors.inside) await interiors.exit(true);
   player.dismount(true);
   state.era = eraId;
   const era = getEra(eraId);
@@ -106,13 +114,15 @@ async function travel(eraId, opts = {}) {
   questWorld.clear();
   audio.setEra(eraId);
   audio.clearSpatial();
-  for (const l of world.lights) audio.addSpatial('fire', l.light.position);
+  world.eraGroup.updateMatrixWorld(true);
+  for (const l of world.lights) audio.addSpatial('fire', l.light.getWorldPosition(new THREE.Vector3()));
   for (const s of Object.values(world.spots)) if (s.sound) audio.addSpatial(s.sound, { x: s.x, y: heightAt(s.x, s.z) + 1, z: s.z });
   if (!opts.keepPos) {
     const sp = world.spawn;
     player.teleport(sp.x, sp.z, sp.rot ?? Math.PI);
   }
   ui.mapEra = null;
+  if (!window.__dev?.noRender) { ui.buildMap(); ui.buildLocalMap(); }
   quests.checkAuto();
   if (state.tracked && quests.def(state.tracked)?.era !== eraId) quests.trackBest();
   ERA_HOOKS[eraId]?.onEnter?.(api);
@@ -194,6 +204,22 @@ async function newGame(avatar) {
 
 // ---------- Boucle ----------
 let last = performance.now();
+
+// Qualité adaptative : si l'image est trop lente, on allège le rendu
+const perf = { t: 0, frames: 0, sum: 0, checks: 0 };
+function adaptQuality(dt) {
+  if (window.__dev?.noRender || perf.checks >= 3) return;
+  perf.t += dt; perf.frames++; perf.sum += dt;
+  if (perf.t < 6) return;
+  const avg = perf.sum / perf.frames;
+  perf.t = 0; perf.frames = 0; perf.sum = 0; perf.checks++;
+  const q = state.options.quality;
+  if (avg > 0.045 && q !== 'low') {
+    state.options.quality = q === 'high' ? 'medium' : 'low';
+    applyQuality();
+    ui.toast(`Qualité graphique réduite (${state.options.quality === 'medium' ? 'moyenne' : 'basse'}) pour garder le jeu fluide.`, 'info');
+  }
+}
 let saveT = 0;
 let titleT = 0;
 function loop(now) {
@@ -210,6 +236,7 @@ function loop(now) {
     dayNight.update(dt, p);
     world.night = dayNight.night;
     world.update(dt, t, state.time, camera);
+    interiors.update(dt, dayNight.daylight ?? 1);
     world.fauna.playerPos.copy(p);
     world.fauna.playerSpeed = player.speed;
     npcs.update(dt, { player: p, hour: state.time, camera, playerSpeed: player.speed, onBike: player.mode === 'bike' });
@@ -225,6 +252,7 @@ function loop(now) {
     ERA_HOOKS[state.era]?.onUpdate?.(api, dt);
     state.stats.playTime += dt;
     saveT += dt;
+    adaptQuality(dt);
     if (saveT > 90 && !cinematic.active && !dialogue.isOpen()) { saveT = 0; save(); }
   } else {
     // fond animé de l'écran titre : lent travelling autour du phare
@@ -238,12 +266,16 @@ function loop(now) {
     world.night = dayNight.night;
     world.update(dt, t, state.time, camera);
   }
-  if (!window.__dev.noRender) renderer.render(scene, camera);
+  if (!window.__dev.noRender) {
+    pipeline.updateEnvironment(dt, { indoor: !!world.indoor, night: world.night ?? 0 });
+    pipeline.render();
+  }
   endFrame();
 }
 
 // ---------- Chargement ----------
 async function boot() {
+  if (window.__forceQuality) state.options.quality = window.__forceQuality;
   const bar = $('#loading-bar'), hint = $('#loading-hint');
   const step = async (label, k, fn) => {
     hint.textContent = label;
@@ -252,7 +284,7 @@ async function boot() {
     await fn();
   };
   await step('Chargement des polices d\'époque…', 10, () => loadFonts());
-  await step("Relevé de la côte et des marais…", 30, () => world.build());
+  await step("Relevé de la côte et des marais…", 30, () => { world.build(); pipeline.setSky(world.sky.mesh.material); });
   await step('Allumage du phare…', 55, () => { dayNight = new DayNight(scene, world); api.dayNight = dayNight; applyQuality(); });
   await step('Les habitants se réveillent…', 80, () => travel('contemporaine', { silent: true, force: true }));
   await step('Réglage de l\'Astrolabe…', 100, () => {});

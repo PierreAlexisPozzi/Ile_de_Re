@@ -93,7 +93,7 @@ export default {
     24, 2.36, PI, { y: 2.0, scale: 0.95 });
 
     // ---------- entrepôt du négociant (horreum) ----------
-    tb.house(18, -17, 0, { ...roman, w: 14, d: 8, floors: 1, door: false, roofPitch: 0.24 });
+    tb.house(18, -17, 0, { ...roman, w: 14, d: 8, floors: 1, doorX: 0, enter: { type: 'warehouse', name: 'Horreum' }, roofPitch: 0.24 });
     const gate = new THREE.Mesh(box(2.6, 2.8, 0.12), MAT.woodDark());
     tb.put(gate, 18, -12.95, { y: 1.4 });
     tb.plaque({ text: 'HORREVM', sub: 'L · POMPEI · VARRONIS · NEGOTIATORIS', style: 'roman' }, 18, -12.9, 0, 3.4, 4.0);

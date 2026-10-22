@@ -10,7 +10,9 @@ import { pressed, pressedChar, releasePointer } from '../core/input.js';
 import { ITEMS, ITEM_TYPES, CODEX, CODEX_CATS, QUESTS, NPCS, SHOPS, RIDDLES, shopKey } from '../story/registry.js';
 import { ERAS, getEra } from '../story/eras.js';
 import { LOCATIONS, LOCATION, nearestLocation } from '../world/locations.js';
-import { heightAt, terrainColor, HALF_L } from '../world/terrain.js';
+import { heightAt, terrainColor } from '../world/terrain.js';
+import { ERA_GEO } from '../world/geo/shape.js';
+import { renderIslandMap } from './islandMap.js';
 import { posterCanvas, signCanvas } from '../gfx/signs.js';
 import { api, resolveAt } from '../systems/api.js';
 import { useItem, spend, levelOf, nextLevelXP, SKILLS, hasSkill, repTitle, addItem, unlockCodex, addXP } from '../systems/inventory.js';
@@ -19,7 +21,9 @@ import { look } from '../characters/wardrobe.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const MAP = { x0: -235, x1: 235, z0: -88, z1: 88, ppu: 3 };
+// carte globale (toute l'île et la côte de La Rochelle) et carte locale de la ville
+const MAP = { x0: -830, x1: 1080, z0: -455, z1: 445, ppu: 0.45 };
+const LMAP = { half: 150, ppu: 1.3 };
 
 export class UI {
   constructor() {
@@ -70,10 +74,10 @@ export class UI {
     $('#era-name').textContent = era.name;
     $('#era-years').textContent = era.years;
     const p = api.player.pos;
-    const loc = nearestLocation(p.x, p.z, 60);
-    const town = LOCATION[era.town];
-    const inTown = Math.hypot(p.x - town.position[0], p.z - town.position[2]) < 70;
-    $('#hud-place').textContent = inTown ? era.townName : loc ? `Environs de ${loc.name}` : "Île de Ré";
+    const loc = nearestLocation(p.x, p.z, 140);
+    const tc = api.world.townCenter;
+    const inTown = Math.hypot(p.x - tc.x, p.z - tc.z) < 75;
+    $('#hud-place').textContent = api.world.indoor ? `${api.world.indoor.def.name ?? 'Intérieur'} — ${era.townName}` : inTown ? era.townName : loc ? `Environs de ${loc.name}` : "Île de Ré";
     const h = Math.floor(state.time), m = Math.floor((state.time % 1) * 60);
     $('#hud-clock').textContent = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
     $('#hud-weather').textContent = { clear: '☀ Clair', cloudy: '⛅ Nuageux', fog: '🌫 Brume', rain: '🌧 Pluie' }[state.weather] ?? '';
@@ -141,19 +145,39 @@ export class UI {
     } else goal.style.display = 'none';
   }
 
-  // ---------- Carte de l'île (calculée à partir du relief réel) ----------
+  // ---------- Carte de l'île (vraie géographie, forme de l'époque) ----------
   buildMap() {
     if (this.mapEra === state.era && this.mapCanvas) return this.mapCanvas;
-    const W = Math.round((MAP.x1 - MAP.x0) * MAP.ppu), H = Math.round((MAP.z1 - MAP.z0) * MAP.ppu);
-    const c = this.mapCanvas ?? document.createElement('canvas');
-    c.width = W; c.height = H;
-    const ctx = c.getContext('2d');
-    const img = ctx.createImageData(W, H);
     const lookE = getEra(state.era).look;
-    const step = 1 / MAP.ppu;
-    for (let j = 0; j < H; j++) {
+    this.mapCanvas = renderIslandMap(MAP, ERA_GEO[state.era], lookE);
+    const ctx = this.mapCanvas.getContext('2d');
+    // emprise de la ville de l'époque
+    ctx.fillStyle = 'rgba(150, 70, 50, 0.9)';
+    const tc = api.world.townCenter;
+    for (const col of api.world.colliders) {
+      if (Math.hypot(col.x - tc.x, col.z - tc.z) > 90 || col.r < 0.8) continue;
+      ctx.fillRect((col.x - MAP.x0) * MAP.ppu - 0.6, (col.z - MAP.z0) * MAP.ppu - 0.6, 1.4, 1.4);
+    }
+    this.localMap = null;
+    this.mapEra = state.era;
+    return this.mapCanvas;
+  }
+
+  // Carte détaillée autour de la ville (relief, bâtiments)
+  buildLocalMap() {
+    if (this.localMap && this.mapEra === state.era) return this.localMap;
+    this.buildMap();
+    const tc = api.world.townCenter;
+    const L = { x0: tc.x - LMAP.half, z0: tc.z - LMAP.half, ppu: LMAP.ppu };
+    const W = LMAP.half * 2 * LMAP.ppu;
+    const c = document.createElement('canvas');
+    c.width = c.height = W;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(W, W);
+    const lookE = getEra(state.era).look;
+    for (let j = 0; j < W; j++) {
       for (let i = 0; i < W; i++) {
-        const x = MAP.x0 + i * step, z = MAP.z0 + j * step;
+        const x = L.x0 + i / L.ppu, z = L.z0 + j / L.ppu;
         const h = heightAt(x, z);
         let r, g, b;
         if (h < 0.05) {
@@ -169,37 +193,52 @@ export class UI {
       }
     }
     ctx.putImageData(img, 0, 0);
-    // bâtiments et obstacles de la ville
     ctx.fillStyle = 'rgba(120, 72, 52, 0.85)';
-    const tc = api.world.townCenter;
     for (const col of api.world.colliders) {
-      if (Math.hypot(col.x - tc.x, col.z - tc.z) > 90 || col.r < 0.8) continue;
+      if (Math.abs(col.x - tc.x) > LMAP.half || Math.abs(col.z - tc.z) > LMAP.half || col.r < 0.8) continue;
       ctx.beginPath();
-      ctx.arc((col.x - MAP.x0) * MAP.ppu, (col.z - MAP.z0) * MAP.ppu, col.r * MAP.ppu, 0, Math.PI * 2);
+      ctx.arc((col.x - L.x0) * L.ppu, (col.z - L.z0) * L.ppu, col.r * L.ppu, 0, Math.PI * 2);
       ctx.fill();
     }
-    this.mapCanvas = c;
-    this.mapEra = state.era;
-    return c;
+    this.localMap = { canvas: c, ...L };
+    return this.localMap;
   }
 
   drawMinimap() {
     const cv = $('#minimap');
     const ctx = cv.getContext('2d');
-    const base = this.buildMap();
     const p = api.player.pos;
-    const W = cv.width, s = 1.0;
+    const W = cv.width;
+    if (api.world.indoor) {
+      ctx.save();
+      ctx.clearRect(0, 0, W, W);
+      ctx.beginPath(); ctx.arc(W / 2, W / 2, W / 2 - 1, 0, Math.PI * 2); ctx.clip();
+      ctx.fillStyle = '#1a1612'; ctx.fillRect(0, 0, W, W);
+      ctx.fillStyle = '#d9b45f'; ctx.font = "15px 'Cormorant Garamond', serif"; ctx.textAlign = 'center';
+      ctx.fillText('🚪 Intérieur', W / 2, W / 2 + 5);
+      ctx.restore();
+      return;
+    }
+    // en ville : carte détaillée ; dans la campagne : carte de l'île
+    const lm = this.buildLocalMap();
+    const tc = api.world.townCenter;
+    const local = Math.abs(p.x - tc.x) < LMAP.half - 40 && Math.abs(p.z - tc.z) < LMAP.half - 40;
+    const src = local ? lm : { canvas: this.buildMap(), x0: MAP.x0, z0: MAP.z0, ppu: MAP.ppu };
+    const zoom = local ? 1 : 3;           // pixels d'écran par pixel de carte
+    const ppu = src.ppu * zoom;
     ctx.save();
     ctx.clearRect(0, 0, W, W);
     ctx.beginPath(); ctx.arc(W / 2, W / 2, W / 2 - 1, 0, Math.PI * 2); ctx.clip();
     ctx.fillStyle = '#2a5a70'; ctx.fillRect(0, 0, W, W);
-    const px = (p.x - MAP.x0) * MAP.ppu, pz = (p.z - MAP.z0) * MAP.ppu;
-    ctx.drawImage(base, px - W / (2 * s), pz - W / (2 * s), W / s, W / s, 0, 0, W, W);
+    const px = (p.x - src.x0) * src.ppu, pz = (p.z - src.z0) * src.ppu;
+    ctx.imageSmoothingEnabled = !local;
+    ctx.drawImage(src.canvas, px - W / (2 * zoom), pz - W / (2 * zoom), W / zoom, W / zoom, 0, 0, W, W);
+    const MAPP = { ppu };
     // cibles de quêtes
     for (const t of api.quests.targets()) {
       const q = resolveAt(t.at);
       if (!q) continue;
-      let x = W / 2 + (q.x - p.x) * MAP.ppu * s, y = W / 2 + (q.z - p.z) * MAP.ppu * s;
+      let x = W / 2 + (q.x - p.x) * MAPP.ppu, y = W / 2 + (q.z - p.z) * MAPP.ppu;
       const dx = x - W / 2, dy = y - W / 2, d = Math.hypot(dx, dy);
       if (d > W / 2 - 8) { x = W / 2 + dx / d * (W / 2 - 8); y = W / 2 + dy / d * (W / 2 - 8); }
       ctx.fillStyle = t.tracked ? '#ffd36a' : t.main ? '#e8c060' : '#8fe0ff';
@@ -208,7 +247,7 @@ export class UI {
     // PNJ à quête
     for (const n of api.npcs.list) {
       if (n.extra) continue;
-      const x = W / 2 + (n.pos.x - p.x) * MAP.ppu * s, y = W / 2 + (n.pos.z - p.z) * MAP.ppu * s;
+      const x = W / 2 + (n.pos.x - p.x) * MAPP.ppu, y = W / 2 + (n.pos.z - p.z) * MAPP.ppu;
       if (Math.hypot(x - W / 2, y - W / 2) > W / 2) continue;
       ctx.fillStyle = 'rgba(240,234,216,0.85)';
       ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
@@ -446,42 +485,62 @@ export class UI {
   }
 
   // ---------- Carte ----------
-  openMap() {
+  openMap(view = state.era) {
     const body = this.open('map', 'Carte de l\'Île de Ré');
-    const base = this.buildMap();
+    unlockCodex('histoire-formation-ile', true);
+    const here = view === state.era;
+    const base = here ? this.buildMap() : renderIslandMap(MAP, ERA_GEO[view], getEra(view).look);
     const c = document.createElement('canvas');
     c.id = 'bigmap';
-    c.width = base.width; c.height = base.height;
+    const k = 2;                               // la carte est redessinée en plus fin pour les textes
+    c.width = base.width * k; c.height = base.height * k;
     const ctx = c.getContext('2d');
-    ctx.drawImage(base, 0, 0);
-    const P = (x, z) => [(x - MAP.x0) * MAP.ppu, (z - MAP.z0) * MAP.ppu];
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(base, 0, 0, c.width, c.height);
+    const P = (x, z) => [(x - MAP.x0) * MAP.ppu * k, (z - MAP.z0) * MAP.ppu * k];
     const era = getEra(state.era);
     ctx.textAlign = 'center';
     for (const l of LOCATIONS) {
       const [x, y] = P(l.position[0], l.position[2]);
-      const here = l.id === era.town;
-      ctx.fillStyle = here ? '#ffd36a' : 'rgba(240,234,216,0.75)';
-      ctx.beginPath(); ctx.arc(x, y, here ? 9 : 5, 0, Math.PI * 2); ctx.fill();
-      if (here) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); }
-      ctx.font = `${here ? 'bold 26px' : '20px'} 'Cormorant Garamond', serif`;
-      ctx.fillStyle = '#10161c';
-      ctx.fillText(l.name, x + 1, y - 13);
-      ctx.fillStyle = here ? '#fff3c8' : '#f0ead8';
-      ctx.fillText(l.name, x, y - 14);
+      const cur = here && l.id === era.town;
+      ctx.fillStyle = cur ? '#ffd36a' : l.village === false ? 'rgba(200,230,240,0.85)' : 'rgba(240,234,216,0.85)';
+      ctx.beginPath(); ctx.arc(x, y, cur ? 9 : 4.5, 0, Math.PI * 2); ctx.fill();
+      if (cur) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); }
+      ctx.font = `${cur ? 'bold 25px' : l.village === false ? 'italic 18px' : '20px'} 'Cormorant Garamond', serif`;
+      ctx.fillStyle = 'rgba(10,16,22,0.8)';
+      ctx.fillText(l.name, x + 1, y - 11);
+      ctx.fillStyle = cur ? '#fff3c8' : '#f0ead8';
+      ctx.fillText(l.name, x, y - 12);
     }
-    for (const t of api.quests.targets()) {
-      const q = resolveAt(t.at);
-      if (!q) continue;
-      const [x, y] = P(q.x, q.z);
-      ctx.fillStyle = t.tracked ? '#ffd36a' : '#8fe0ff';
-      ctx.beginPath(); ctx.moveTo(x, y - 9); ctx.lineTo(x + 7, y); ctx.lineTo(x, y + 9); ctx.lineTo(x - 7, y); ctx.closePath(); ctx.fill();
+    // mers et pertuis
+    ctx.font = "italic 26px 'Cormorant Garamond', serif";
+    ctx.fillStyle = 'rgba(220,236,244,0.55)';
+    for (const [t, x, z] of [['Pertuis Breton', 150, -330], ["Pertuis d'Antioche", 230, 400], ['Océan Atlantique', -560, 250], ["Fier d'Ars", -440, -150], ['Fosse de Loix', -40, -110]]) {
+      const [px, py] = P(x, z); ctx.fillText(t, px, py);
     }
-    const pp = api.player.pos;
-    const [px, py] = P(pp.x, pp.z);
-    ctx.save(); ctx.translate(px, py); ctx.rotate(Math.PI - api.player.yaw);
-    ctx.fillStyle = '#ff5a3a'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(0, -13); ctx.lineTo(9, 10); ctx.lineTo(0, 5); ctx.lineTo(-9, 10); ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.restore();
+    if (here) {
+      for (const t of api.quests.targets()) {
+        const q = resolveAt(t.at);
+        if (!q) continue;
+        const [x, y] = P(q.x, q.z);
+        ctx.fillStyle = t.tracked ? '#ffd36a' : '#8fe0ff';
+        ctx.beginPath(); ctx.moveTo(x, y - 9); ctx.lineTo(x + 7, y); ctx.lineTo(x, y + 9); ctx.lineTo(x - 7, y); ctx.closePath(); ctx.fill();
+      }
+      const pp = api.player.pos;
+      const [px, py] = P(pp.x, pp.z);
+      ctx.save(); ctx.translate(px, py); ctx.rotate(Math.PI - api.player.yaw);
+      ctx.fillStyle = '#ff5a3a'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, -13); ctx.lineTo(9, 10); ctx.lineTo(0, 5); ctx.lineTo(-9, 10); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.restore();
+    }
+    // rose des vents et échelle
+    ctx.fillStyle = '#f0ead8'; ctx.font = "bold 22px 'Cormorant Garamond', serif";
+    ctx.fillText('N ↑', 50, 40);
+    const km = 1000 / 15 * MAP.ppu * k;      // 1 km en pixels
+    ctx.fillRect(30, c.height - 34, km * 2, 4);
+    ctx.font = "16px 'Cormorant Garamond', serif"; ctx.textAlign = 'left';
+    ctx.fillText('2 km', 30, c.height - 42);
+
     body.innerHTML = '';
     const wrap = document.createElement('div');
     wrap.className = 'map-wrap';
@@ -489,8 +548,45 @@ export class UI {
     body.appendChild(wrap);
     const lg = document.createElement('div');
     lg.className = 'legend';
-    lg.innerHTML = `<span><i style="background:#ffd36a"></i>Ville de l'époque : ${era.townName}</span><span><i style="background:#8fe0ff"></i>Objectifs</span><span><i style="background:#ff5a3a"></i>Toi</span><span><i style="background:#c4d0cc"></i>Marais salants</span><span><i style="background:#7e6a42"></i>Vignes</span>`;
+    lg.innerHTML = here
+      ? `<span><i style="background:#ffd36a"></i>Ville de l'époque : ${era.townName}</span><span><i style="background:#8fe0ff"></i>Objectifs</span><span><i style="background:#ff5a3a"></i>Toi</span><span><i style="background:#c4d0cc"></i>Marais</span><span><i style="background:#e2cf9e"></i>Plages et dunes</span>`
+      : `<span>Forme de l'île en ${esc(getEra(view).name)} (${esc(getEra(view).years)})</span>`;
     body.appendChild(lg);
+    // l'île au fil du temps
+    const strip = document.createElement('div');
+    strip.className = 'map-eras';
+    const note = document.createElement('p');
+    note.className = 'map-note';
+    note.textContent = ERA_GEO[view]?.note ?? '';
+    for (const e of ERAS) {
+      const b = document.createElement('button');
+      b.className = 'map-era' + (e.id === view ? ' current' : '');
+      const th = this.eraThumb(e.id);
+      const im = document.createElement('img');
+      im.src = th;
+      b.appendChild(im);
+      const cap = document.createElement('span');
+      cap.textContent = `${e.icon} ${e.short ?? e.name}`;
+      b.appendChild(cap);
+      b.onclick = () => this.openMap(e.id);
+      strip.appendChild(b);
+    }
+    const h = document.createElement('h3');
+    h.className = 'map-eras-title';
+    h.textContent = "L'île au fil du temps";
+    body.appendChild(h);
+    body.appendChild(strip);
+    body.appendChild(note);
+  }
+
+  // Vignette de la forme de l'île à une époque (mise en cache)
+  eraThumb(id) {
+    this.thumbs ??= {};
+    if (!this.thumbs[id]) {
+      const M = { x0: -830, x1: 1000, z0: -450, z1: 440, ppu: 0.11 };
+      this.thumbs[id] = renderIslandMap(M, ERA_GEO[id], getEra(id).look, { detail: false }).toDataURL();
+    }
+    return this.thumbs[id];
   }
 
   // ---------- Portail temporel ----------
@@ -752,4 +848,4 @@ export class UI {
   }
 }
 
-export { NPCS, HALF_L };
+export { NPCS };

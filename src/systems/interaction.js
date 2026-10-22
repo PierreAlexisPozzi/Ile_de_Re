@@ -77,6 +77,8 @@ export class Interaction {
       case 'disembark': api.player.dismount(); break;
       case 'fauna': this.observe(c.v); break;
       case 'custom': act(c.v.do ?? [], {}); break;
+      case 'door': api.interiors.enter(c.v.interior); break;
+      case 'exit': api.interiors.exit(); break;
     }
   }
 
