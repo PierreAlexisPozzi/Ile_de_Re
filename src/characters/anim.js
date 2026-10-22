@@ -285,6 +285,7 @@ const KEYS = Object.keys(base());
 
 // Calcule et applique la pose d'un personnage (voir rig.js : Character).
 export function animate(c, dt) {
+  dt = Math.max(0, dt);            // un pas négatif ferait diverger le lissage
   if (!c.pose) c.pose = base();
   c.t += dt;
   const t = c.t;

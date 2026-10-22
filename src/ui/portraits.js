@@ -38,7 +38,7 @@ export class PortraitRenderer {
     c.group.rotation.y = 0.28;
     this.scene.add(c.group);
     c.group.updateMatrixWorld(true);
-    const headY = 1.62 * c.scale;
+    const headY = (c.eyeHeight ?? 1.62) * c.scale + 0.01;
     this.camera.position.set(0.18, headY + 0.02, 1.15);
     this.camera.lookAt(0, headY - 0.08, 0);
     this.renderer.setClearColor(0x000000, 0);

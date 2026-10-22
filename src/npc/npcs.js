@@ -336,6 +336,9 @@ export class NPCManager {
       const d = Math.hypot(n.pos.x - ctx.player.x, n.pos.z - ctx.player.z);
       // au loin : on simplifie (pas d'animation fine)
       n.char.group.visible = d < 120;
+      // détail complet seulement de près (avec une marge pour éviter le clignotement)
+      const dc = ctx.camera ? n.char.group.position.distanceTo(ctx.camera.position) : d;
+      n.char.setLOD(dc > (n.char.lod?.level ? 11 : 13) ? 1 : 0);
       if (d > 120 && !n.followOn) { n.el.style.display = 'none'; continue; }
       n.update(dt, ctx);
     }

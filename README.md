@@ -99,10 +99,16 @@ On peut aussi dormir dans un lit, ou passer la nuit avec la touche `N`.
 
 ## Ce que contient le jeu
 
-- **Personnages** : une seule peau continue, sans raccords au cou, aux épaules, aux coudes ni aux genoux.
-  Elle est générée à partir de volumes anatomiques (trapèzes, deltoïdes, biceps, quadriceps, mollets) et déformée par le squelette.
-  Les vêtements ajustés (chemises et manches, pantalons, culottes, bas, gants) épousent le corps et plient avec lui.
-  La tête est sculptée (nez, orbites, arcades, pommettes, lèvres, menton) et les yeux sont en relief : ils clignent et suivent le regard.
+- **Personnages** : des corps humains réalistes, issus de MakeHuman (CC0), en douze morphologies.
+  On y trouve hommes et femmes, jeunes, âgés et enfants, de carrure normale, forte ou mince.
+  La peau est continue et déformée par le squelette, avec une occlusion ambiante précalculée.
+  Le visage a de vrais yeux (iris de couleur, cils, regard qui suit, clignements) et des dents.
+  La mâchoire bouge quand le personnage parle.
+  La peau est composée par personnage : carnation, lèvres, joues, sourcils, barbe de quelques jours, rides.
+  Les cheveux et les barbes forment une calotte de mèches, complétée de mèches libres.
+  Coupes : courte, raie sur le côté, frange romaine, carré, longue, queue de cheval, chignon, nattes, tonsure, perruque.
+  Les vêtements ajustés (chemises, corsages, pantalons, culottes, bas, gants, souliers, bottes, vestes, fichus) sont gonflés depuis le corps, lissés et découpés en ourlets nets.
+  Robes, jupes et pans d'habit enveloppent le bassin réel. Au loin, un niveau de détail allégé prend le relais.
   Les animations sont procédurales (marche, course, gestes de métier), et chacun a son attitude au repos : bras ballants, poing sur la hanche, bras croisés ou mains jointes.
 - **Costumes d'époque** : peaux et parures néolithiques, tuniques, toges et
   pallas romaines, cottes, guimpes et scapulaires médiévaux, justaucorps,
@@ -152,6 +158,8 @@ On peut aussi dormir dans un lit, ou passer la nuit avec la touche `N`.
 index.html               Point d'entrée (HUD, dialogues, panneaux)
 style.css                Interface
 fonts/                   Polices d'époque (licences libres, voir LICENCES.md)
+assets/humans/           Corps humains (MakeHuman, CC0), générés par
+                         dev/tools/gen_humans.py
 vendor/three.module.js   Three.js r160 embarqué
 vendor/jsm/              Modules de post-traitement de Three.js r160
 src/
@@ -160,8 +168,9 @@ src/
   core/                  État et sauvegarde, entrées, événements, aléatoire
   gfx/                   Textures procédurales, tissus, feuillages,
                          enseignes et affiches (canvas), fusion de maillages
-  characters/            Squelette, visages, costumes, accessoires, animations,
-                         garde-robe par époque (wardrobe.js)
+  characters/            Corps réalistes (human.js), squelette et habillage
+                         (rig.js), cheveux et barbes (hair.js), costumes,
+                         accessoires, animations, garde-robe (wardrobe.js)
   world/                 Terrain, océan, ciel, paysage, faune, matériaux,
                          constructeur de villes (builder.js), intérieurs
     geo/                 Contour réel de l'île (coast.js) et sa forme
@@ -178,7 +187,8 @@ src/
   ui/                    HUD, panneaux, portraits des PNJ
   dev/bot.js             Bot de test qui joue l'histoire
 dev/                     Pages de développement (galerie de personnages,
-                         enseignes, carte du relief)
+                         personnage seul, enseignes, carte du relief) et
+                         outils de génération (contour de l'île, corps)
 ```
 
 ## Ajouter du contenu
