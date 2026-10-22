@@ -10,7 +10,7 @@
 export const LOCATIONS = [
   {
     id: 'phare-baleines', name: 'Phare des Baleines', position: [-768, 0, -318], icon: '🗼', village: false,
-    placement: { x: -760, z: -296, rot: -Math.PI / 2 },
+    placement: { x: -760, z: -296, rot: -1.0 },
     description: "À la pointe occidentale de l'île, le grand phare de 1854 veille sur la mer des Pertuis, à côté de la vieille tour de Vauban.",
   },
   {
