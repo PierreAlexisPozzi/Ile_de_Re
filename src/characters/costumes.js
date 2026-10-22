@@ -29,14 +29,65 @@ export function deformHeadGeometry(g, r) {
     let x = p.getX(i) / r, y = p.getY(i) / r, z = p.getZ(i) / r;
     if (y < 0) {
       const t = -y;
-      x *= 1 - 0.3 * t * t;
-      z = z * (1 - 0.1 * t) + 0.07 * t * t * Math.max(0, z);
+      x *= 1 - 0.17 * t * t - 0.08 * t ** 4;
+      z = z * (1 - 0.08 * t) + 0.07 * t * t * Math.max(0, z);
     }
     if (z < 0) z *= 1.07;
     p.setXYZ(i, x * 0.8 * r, y * 1.1 * r, z * 0.97 * r);
   }
   g.computeVertexNormals();
   return g;
+}
+
+// Relief du visage (repère de la sphère unité, avant = +z) : arcades, orbites,
+// nez, ailes du nez, pommettes, lèvres, menton. Les zones correspondent au
+// visage peint (yeux à y≈0.03, nez jusqu'à y≈-0.3, bouche à y≈-0.52).
+const G2 = (x, y, cx, cy, sx, sy) => Math.exp(-(((x - cx) / sx) ** 2 + ((y - cy) / sy) ** 2));
+export function faceRelief(x, y, z, o = {}) {
+  if (z <= 0.05) return 0;
+  const front = Math.min(1, (z - 0.05) / 0.35);
+  const male = o.sex !== 'f', child = o.age === 'child', old = o.age === 'old';
+  let d = 0;
+  // nez : arête qui part d'entre les yeux et s'avance jusqu'au bout du nez
+  const nk = child ? 0.65 : old ? 1.12 : male ? 1.0 : 0.85;
+  if (y < 0.12 && y > -0.36) {
+    const t = (0.12 - y) / 0.48;                                // 0 en haut, 1 sous le nez
+    const h = (t < 0.8 ? 0.02 + 0.15 * (t / 0.8) ** 1.4 : 0.17 * (1 - (t - 0.8) / 0.2) ** 0.7) * nk;
+    const w = 0.04 + 0.035 * t;
+    d += h * Math.exp(-((x / w) ** 2));
+  }
+  d += 0.055 * nk * (G2(x, y, 0.075, -0.25, 0.04, 0.035) + G2(x, y, -0.075, -0.25, 0.04, 0.035));   // ailes du nez
+  // orbites creusées et arcades sourcilières
+  d -= 0.05 * (G2(x, y, 0.31, 0.02, 0.11, 0.075) + G2(x, y, -0.31, 0.02, 0.11, 0.075));
+  d += (male ? 0.04 : 0.022) * (G2(x, y, 0.27, 0.17, 0.2, 0.055) + G2(x, y, -0.27, 0.17, 0.2, 0.055));
+  // pommettes, joues
+  d += 0.035 * (G2(x, y, 0.45, -0.13, 0.13, 0.1) + G2(x, y, -0.45, -0.13, 0.13, 0.1));
+  d += 0.03 * (G2(x, y, 0.42, -0.42, 0.16, 0.16) + G2(x, y, -0.42, -0.42, 0.16, 0.16));   // joues pleines
+  if (old) d -= 0.02 * (G2(x, y, 0.4, -0.38, 0.1, 0.1) + G2(x, y, -0.4, -0.38, 0.1, 0.1));
+  // sillon sous le nez, lèvres, pli de la bouche, menton
+  d += 0.03 * G2(x, y, 0, -0.475, 0.17, 0.035) + 0.034 * G2(x, y, 0, -0.565, 0.14, 0.04);
+  d -= 0.012 * G2(x, y, 0, -0.52, 0.14, 0.012);
+  d += (male ? 0.05 : 0.035) * G2(x, y, 0, -0.8, 0.24, 0.1);
+  return d * front;
+}
+
+export function sculptHeadGeometry(g, r, o = {}) {
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i) / r, y = p.getY(i) / r, z = p.getZ(i) / r;
+    const k = 1 + faceRelief(x, y, z, o);
+    p.setXYZ(i, x * k * r, y * k * r, z * k * r);
+  }
+  return deformHeadGeometry(g, r);
+}
+
+// Position (repère de la tête) d'un point du visage, pour y loger les yeux
+export function headPoint(x, y, o = {}) {
+  const z = Math.sqrt(Math.max(0, 1 - x * x - y * y));
+  const k = 1 + faceRelief(x, y, z, o);
+  let X = x * k, Y = y * k, Z = z * k;
+  if (Y < 0) { const t = -Y; X *= 1 - 0.17 * t * t - 0.08 * t ** 4; Z = Z * (1 - 0.08 * t) + 0.07 * t * t * Math.max(0, Z); }
+  return new THREE.Vector3(X * 0.8 * HEAD_R, Y * 1.1 * HEAD_R, Z * 0.97 * HEAD_R);
 }
 
 function headShell(key, r, phiStart, phiLength, thetaStart, thetaLength, segs = 22) {
@@ -200,10 +251,12 @@ export function buildBeard(style, color) {
   const R = HEAD_R;
   const mustache = (w = 0.026, drop = 0) => {
     for (const sx of [-1, 1]) {
-      const m = mesh(geo('stache', () => new THREE.CapsuleGeometry(0.008, 0.026, 3, 6)), mat);
-      m.position.set(sx * 0.016, -0.052 - drop * 0.4, 0.088);
-      m.rotation.z = sx * (PI / 2 - 0.35 - drop * 2.5);
-      m.scale.set(1, w / 0.026, 1);
+      // moustache : mèche aplatie qui épouse la lèvre supérieure
+      const m = mesh(geo('stache3', () => new THREE.SphereGeometry(0.01, 12, 8)), mat);
+      m.position.set(sx * 0.0155, -0.0505 - drop * 0.4, 0.0925);
+      m.rotation.z = -sx * (0.22 + drop * 2.2);
+      m.rotation.y = sx * 0.45;
+      m.scale.set(1.75 * (w / 0.026), 0.62, 0.55);
       g.add(m);
     }
   };

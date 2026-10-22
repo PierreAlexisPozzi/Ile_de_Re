@@ -360,7 +360,7 @@ const quests = [
   { id: 'wwii.m4', main: true, title: 'Sous le béton', desc: 'Sauver l\'éclat avant que le blockhaus ne soit coulé.',
     steps: [
       { id: 'helene', type: 'talk', npc: 'helene', dialogue: 'helene.m4', text: 'Retrouve Hélène au dispensaire.' },
-      { id: 'nuit', type: 'wait', until: (S) => S.night(), text: 'Attends la nuit (une heure de jeu = une minute).' },
+      { id: 'nuit', type: 'wait', until: (S) => S.night(), text: 'Attends la nuit (une heure de jeu = une minute, ou touche N).' },
       { id: 'depart', type: 'talk', npc: 'helene', dialogue: 'helene.m4.go', text: 'Il fait nuit. Va chercher Hélène.' },
       { id: 'escorte', type: 'escort', npc: 'helene', to: 'chantier-entree', r: 5, text: 'Conduis Hélène jusqu\'à la route de la plage, près du chantier.', onStart: [['follow', 'helene']] },
       { id: 'garde', type: 'talk', npc: 'soldat', dialogue: 'soldat.m4', text: 'Passe le contrôle de la sentinelle.' },

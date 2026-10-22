@@ -748,6 +748,8 @@ export class UI {
       <div class="opt-row"><span>Sensibilité de la souris</span><input type="range" min="0.3" max="2.5" step="0.1" value="${o.sensitivity}" id="o-sens"></div>
       <div class="opt-row"><span>Inverser l'axe vertical</span><input type="checkbox" id="o-inv" ${o.invertY ? 'checked' : ''}></div>
       <div class="opt-row"><span>Qualité graphique</span><select id="o-q"><option value="high">Haute</option><option value="medium">Moyenne</option><option value="low">Basse</option></select></div>
+      <div class="opt-row"><span>Luminosité générale</span><input type="range" min="0.6" max="1.8" step="0.05" value="${o.brightness ?? 1}" id="o-bri"></div>
+      <div class="opt-row"><span>Clarté des nuits</span><input type="range" min="0" max="1" step="0.05" value="${o.nightLight ?? 0.6}" id="o-night"></div>
       <div class="opt-row"><span>Faisceau d'objectif</span><input type="checkbox" id="o-beam" ${o.beam !== false ? 'checked' : ''}></div>`;
     $('#o-q').value = o.quality;
     $('#o-vol').oninput = (e) => { o.volume = Number(e.target.value); api.audio?.applyVolume(); };
@@ -755,6 +757,8 @@ export class UI {
     $('#o-sens').oninput = (e) => { o.sensitivity = Number(e.target.value); };
     $('#o-inv').onchange = (e) => { o.invertY = e.target.checked; };
     $('#o-beam').onchange = (e) => { o.beam = e.target.checked; };
+    $('#o-bri').oninput = (e) => { o.brightness = Number(e.target.value); };
+    $('#o-night').oninput = (e) => { o.nightLight = Number(e.target.value); };
     $('#o-q').onchange = (e) => { o.quality = e.target.value; api.applyQuality?.(); };
   }
 
@@ -764,7 +768,7 @@ export class UI {
       ['ZQSD / WASD / flèches', 'se déplacer'], ['Maj', 'courir (endurance)'], ['Espace', 'sauter · continuer un dialogue'],
       ['Souris', 'regarder (clic pour capturer) · molette : zoom'], ['E', 'parler, ramasser, examiner, lire, commercer, embarquer'],
       ['1 à 4', 'choisir une réponse'], ['Tab', 'sac'], ['J', 'journal de quêtes'], ['C', "carnet de l'explorateur"],
-      ['M', 'carte'], ['T', "portail temporel (l'Astrolabe)"], ['B', 'vélo (quand il existe)'], ['P', 'carnet de route'], ['Échap', 'pause · fermer'],
+      ['M', 'carte'], ['T', "portail temporel (l'Astrolabe)"], ['B', 'vélo (quand il existe)'], ['N', 'passer le temps : dormir jusqu\'au matin, ou attendre le soir'], ['P', 'carnet de route'], ['Échap', 'pause · fermer'],
     ];
     body.innerHTML = rows.map(([k, v]) => `<div class="opt-row"><span><kbd>${k}</kbd></span><span>${v}</span></div>`).join('');
   }
@@ -845,6 +849,7 @@ export class UI {
     if (pressedChar('p')) toggle('character', () => this.openCharacter());
     if (pressedChar('h')) toggle('help', () => this.openHelp());
     if (!this.panel && pressedChar('b')) api.player.toggleBike();
+    if (!this.panel && pressedChar('n')) api.passTime?.();
   }
 }
 

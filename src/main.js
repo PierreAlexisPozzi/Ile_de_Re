@@ -138,6 +138,31 @@ async function travel(eraId, opts = {}) {
 }
 api.travel = travel;
 
+// Passer le temps : la nuit, dormir jusqu'au matin ; le jour, attendre le soir
+let passing = false;
+api.passTime = async (sleepOnly = false) => {
+  if (passing || traveling || cinematic.active || dialogue.isOpen()) return;
+  const h = state.time;
+  const night = h >= 20.5 || h < 6;
+  if (sleepOnly && !night) { ui.toast("Il fait encore jour : ce n'est pas l'heure de dormir.", 'info'); return; }
+  passing = true;
+  ui.fade(true);
+  await new Promise((r) => setTimeout(r, 650));
+  if (night) {
+    if (h >= 20.5) state.day++;
+    state.time = 7;
+    state.player.stamina = state.player.maxStamina;
+    ui.toast('🌅 Tu dors jusqu\'au matin. Il est 7 h.', 'info');
+  } else {
+    state.time = 21.4;
+    ui.toast('🌙 Tu laisses passer la journée. Le soir tombe.', 'info');
+  }
+  emit('hour', Math.floor(state.time));
+  await new Promise((r) => setTimeout(r, 250));
+  ui.fade(false);
+  passing = false;
+};
+
 function restore() {
   player.setAvatar(state.avatar);
   const p = { ...state.player };
@@ -268,6 +293,7 @@ function loop(now) {
   }
   if (!window.__dev.noRender) {
     pipeline.updateEnvironment(dt, { indoor: !!world.indoor, night: world.night ?? 0 });
+    renderer.toneMappingExposure = dayNight.exposure ?? 1;
     pipeline.render();
   }
   endFrame();

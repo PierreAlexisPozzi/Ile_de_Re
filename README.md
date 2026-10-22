@@ -93,12 +93,17 @@ La lumière du jour entre par les fenêtres. Chaque intérieur contient un objet
 
 La qualité (Échap → Options) règle ces effets. Elle baisse automatiquement si l'image devient trop lente.
 
+La nuit, une lanterne éclaire les abords du voyageur et la lune baigne l'île d'une lumière bleutée.
+Deux réglages, « Luminosité générale » et « Clarté des nuits », permettent d'y voir plus clair.
+On peut aussi dormir dans un lit, ou passer la nuit avec la touche `N`.
+
 ## Ce que contient le jeu
 
-- **Personnages** : squelette articulé (bassin, colonne, cou, épaules,
-  coudes, genoux, chevilles), membres effilés, visages peints (yeux,
-  sourcils, rides, barbe naissante), animations procédurales de marche,
-  de course et de métier (forger, ratisser, écrire, prier, ramer…).
+- **Personnages** : une seule peau continue, sans raccords au cou, aux épaules, aux coudes ni aux genoux.
+  Elle est générée à partir de volumes anatomiques (trapèzes, deltoïdes, biceps, quadriceps, mollets) et déformée par le squelette.
+  Les vêtements ajustés (chemises et manches, pantalons, culottes, bas, gants) épousent le corps et plient avec lui.
+  La tête est sculptée (nez, orbites, arcades, pommettes, lèvres, menton) et les yeux sont en relief : ils clignent et suivent le regard.
+  Les animations sont procédurales (marche, course, gestes de métier), et chacun a son attitude au repos : bras ballants, poing sur la hanche, bras croisés ou mains jointes.
 - **Costumes d'époque** : peaux et parures néolithiques, tuniques, toges et
   pallas romaines, cottes, guimpes et scapulaires médiévaux, justaucorps,
   tricornes et rabats du Grand Siècle, quichenottes des saunières, redingotes
@@ -136,6 +141,7 @@ La qualité (Échap → Options) règle ces effets. Elle baisse automatiquement 
 | `T` | Portail temporel |
 | `P` | Fiche du personnage |
 | `B` | Monter / descendre du vélo |
+| `N` | Passer le temps : dormir jusqu'au matin, ou attendre le soir |
 | `H` | Aide |
 | `Échap` | Pause, options, fermer un panneau |
 | Souris | Caméra (cliquer pour la capturer), molette pour le zoom |

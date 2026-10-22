@@ -388,7 +388,7 @@ const quests = [
     rewards: { xpHist: 30, rep: 10, money: 2 } },
   { id: 'pre.s5', giver: 'doran', offer: 'doran.offer', title: 'La veillée de Doran', desc: "Le vieux Doran raconte, la nuit, l'origine de la pierre qui écoute la mer.",
     steps: [
-      { id: 'nuit', type: 'wait', until: (S) => S.night(), text: 'Attends la nuit (une heure de jeu = une minute).' },
+      { id: 'nuit', type: 'wait', until: (S) => S.night(), text: 'Attends la nuit (une heure de jeu = une minute, ou touche N).' },
       { id: 'ecouter', type: 'talk', npc: 'doran', dialogue: 'doran.s5', text: "Assieds-toi au feu et écoute Doran." },
     ],
     rewards: { xpHist: 60, rep: 5 } },

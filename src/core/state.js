@@ -24,7 +24,7 @@ function fresh() {
     day: 1,
     weather: 'clear',
     ending: null,
-    options: { volume: 0.7, music: 0.6, sensitivity: 1, invertY: false, quality: 'high' },
+    options: { volume: 0.7, music: 0.6, sensitivity: 1, invertY: false, quality: 'high', nightLight: 0.6, brightness: 1 },
     stats: { playTime: 0, distance: 0 },
   };
 }

@@ -371,6 +371,7 @@ function bed(F, x, z, ry = 0) {
   F.add(box(0.94, 0.06, 1.2), flat([0x7a2a22, 0x2a3a6a, 0x5a6a3a, 0x8a6a3a][Math.floor(F.rng() * 4)], 0.95), x, 0.58, z + Math.cos(ry) * 0.3, { ry, shadow: false });
   if (F.o >= 3) F.add(box(1.0, 0.9, 0.08), m, x - Math.sin(ry) * 0.98, 0.45, z - Math.cos(ry) * 0.98, { ry });
   F.solid(x, z, ry ? 2.0 : 1.0, ry ? 1.0 : 2.0);
+  F.interact({ id: `bed:${x.toFixed(1)}:${z.toFixed(1)}`, kind: 'sleep', x: x + Math.cos(ry) * 0.9, z: z - Math.sin(ry) * 0.9, r: 1.2, label: "Dormir jusqu'au matin" });
 }
 function shelves(F, x, z, w, ry, goods) {
   const m = woodFor(F.o);
@@ -690,6 +691,7 @@ function furnishHut(F) {
   for (const [x, z] of [[-W2 + 0.9, -D2 + 1.0], [W2 - 0.9, -D2 + 1.0]]) {
     F.add(box(1.2, 0.15, 1.8), flat(0x6a4a2a, 1), x, 0.08, z, { shadow: false });
     F.interact({ id: `fur:${x}`, kind: 'bench', x, z: z + 1.1, r: 0.9, label: "S'asseoir sur les fourrures", rot: PI });
+    F.interact({ id: `furs:${x}`, kind: 'sleep', x: x + (x < 0 ? 0.9 : -0.9), z, r: 1.0, label: "Dormir jusqu'au matin" });
   }
   for (let i = 0; i < 4; i++) prop(F, 'pot', -W2 + 0.5 + i * 0.35, 0, D2 - 0.6);
   for (let i = 0; i < 4; i++) F.add(new THREE.ConeGeometry(0.06, 0.35, 5), flat(0x8a9aa0, 0.6), -0.6 + i * 0.4, 2.2, -0.8).rotation.x = PI;
