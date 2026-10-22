@@ -107,12 +107,23 @@ export class DayNight {
     const sunCol = new THREE.Color(0xfff2dc).lerp(new THREE.Color(0xff9a5a), dusk * 0.85);
     this.sun.color.copy(sunCol);
     this.sun.intensity = (0.15 + 2.5 * day) * (1 - overcast * 0.55) * (elev > -0.05 ? 1 : 0.0);
-    this.moon.intensity = 0.32 * night;
     // à l'intérieur, la lumière du ciel n'entre que par les fenêtres
     const indoorK = this.world.indoor ? 0.4 : this.scene.environment ? 0.72 : 1;
-    this.hemi.intensity = (0.25 + 0.75 * day) * indoorK;
-    this.hemi.color.set(0x24304a).lerp(new THREE.Color(0xcfe0f0), day);
-    this.hemi.groundColor.set(0x1a1a22).lerp(new THREE.Color(0x6a5a40), day);
+    // clarté nocturne réglable : clair de lune et lumière ambiante bleutée
+    const nl = state.options.nightLight ?? 0.6;
+    this.moon.intensity = (0.4 + 2.2 * nl) * night;
+    this.hemi.intensity = (0.25 + 0.75 * day) * indoorK + night * nl * 1.5 * (this.world.indoor ? 0.35 : 1);
+    this.hemi.color.set(0x24304a).lerp(new THREE.Color(0x8a9cc8), nl * 0.85).lerp(new THREE.Color(0xcfe0f0), day);
+    this.hemi.groundColor.set(0x1a1a22).lerp(new THREE.Color(0x484c5a), nl).lerp(new THREE.Color(0x6a5a40), day);
+    this.exposure = (state.options.brightness ?? 1) * (1 + night * nl * 0.9);
+    // lanterne du voyageur, la nuit, en plein air
+    if (!this.lantern) {
+      this.lantern = new THREE.PointLight(0xffc98a, 0, 16, 1.4);
+      this.scene.add(this.lantern);
+    }
+    const lk = this.world.indoor ? 0 : Math.max(0, night - 0.25) / 0.75;
+    this.lantern.intensity = lk * (3 + nl * 5);
+    this.lantern.position.set(f.x, (f.y ?? 0) + 2.4, f.z);
 
     // ciel
     const u = this.world.sky.uniforms;

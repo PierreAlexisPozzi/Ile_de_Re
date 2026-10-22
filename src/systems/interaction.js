@@ -79,6 +79,7 @@ export class Interaction {
       case 'custom': act(c.v.do ?? [], {}); break;
       case 'door': api.interiors.enter(c.v.interior); break;
       case 'exit': api.interiors.exit(); break;
+      case 'sleep': api.passTime(true); break;
     }
   }
 
