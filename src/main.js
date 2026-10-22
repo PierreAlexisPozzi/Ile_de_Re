@@ -1,356 +1,336 @@
-// Point d'entrée du jeu : initialisation Three.js, boucle de jeu, glue
-// entre tous les systèmes.
+// Point d'entrée : moteur de rendu, systèmes, voyage dans le temps, boucle
+// de jeu, écran titre, sauvegarde.
 
 import * as THREE from 'three';
-import { state, save, load, reset } from './state.js';
-import { ERAS, getEra } from './eras.js';
-import { LOCATIONS, nearestLocation } from './locations.js';
-import { World, heightAt } from './world.js';
+import { state, S, save, load, hasSave, resetState } from './core/state.js';
+import { on, emit } from './core/events.js';
+import { initInput, endFrame, releasePointer } from './core/input.js';
+import { World } from './world/world.js';
+import { Interiors } from './world/interiors.js';
+import { RenderPipeline } from './gfx/render.js';
+import { heightAt } from './world/terrain.js';
+import { LOCATION } from './world/locations.js';
 import { Player } from './player.js';
-import { DayNight } from './dayNight.js';
-import { NPCManager } from './npcs.js';
-import { questSystem, QUESTS, ITEMS } from './quests.js';
-import { addItem, hasItem } from './inventory.js';
-import { initInput, keys, justPressed } from './input.js';
-import { AudioManager } from './audio.js';
-import {
-  updateHUD, setObjective, showInteractHint, hideInteractHint,
-  showToast, openDialogue, closeDialogue, isDialogueOpen,
-  openInventory, openQuestJournal, openMap, openEraPanel,
-  closeAllPanels, isAnyPanelOpen, drawMinimap, eraFlash,
-} from './ui.js';
+import { NPCManager } from './npc/npcs.js';
+import { QuestManager } from './systems/quests.js';
+import { DialogueRunner } from './systems/dialogue.js';
+import { QuestWorld } from './systems/questWorld.js';
+import { Interaction } from './systems/interaction.js';
+import { DayNight } from './systems/dayNight.js';
+import { AudioManager } from './systems/audio.js';
+import { Cinematic } from './systems/cinematic.js';
+import { UI } from './ui/ui.js';
+import { api } from './systems/api.js';
+import { loadFonts } from './gfx/signs.js';
+import { getEra } from './story/eras.js';
+import { ERA_HOOKS } from './story/registry.js';
+import { look } from './characters/wardrobe.js';
+import './story/index.js';
 
-// ---------- Three.js setup ----------
-const canvas = document.getElementById('game');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const $ = (s) => document.querySelector(s);
+
+// ---------- Rendu ----------
+const canvas = $('#game');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.15;
-
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(
-  62, window.innerWidth / window.innerHeight, 0.1, 600
-);
+const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 2600);
+const pipeline = new RenderPipeline(renderer, scene, camera);
 
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
+function applyQuality() {
+  const q = state.options.quality;
+  renderer.setPixelRatio(Math.min(devicePixelRatio, q === 'high' ? 1.5 : q === 'medium' ? 1.1 : 0.85));
+  renderer.setSize(innerWidth, innerHeight);
+  if (pipeline.quality !== q || !pipeline.composer) pipeline.setQuality(q);
+  renderer.shadowMap.enabled = q !== 'low';
+  if (dayNight) {
+    dayNight.sun.castShadow = q !== 'low';
+    const s = q === 'high' ? 2048 : 1024;
+    if (dayNight.sun.shadow.mapSize.x !== s) {
+      dayNight.sun.shadow.mapSize.set(s, s);
+      dayNight.sun.shadow.map?.dispose();
+      dayNight.sun.shadow.map = null;
+    }
+  }
+}
+function resize() {
+  renderer.setSize(innerWidth, innerHeight);
+  pipeline.resize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
+}
+addEventListener('resize', resize);
+resize();
 
 // ---------- Systèmes ----------
 const world = new World(scene);
 const player = new Player(scene, camera);
-player.world = world;               // active les collisions contre le décor
-const dayNight = new DayNight(scene, world);
 const npcs = new NPCManager(scene);
+const quests = new QuestManager();
+const dialogue = new DialogueRunner();
+const questWorld = new QuestWorld(scene);
+const interaction = new Interaction();
+let dayNight = null;
 const audio = new AudioManager();
-
+const cinematic = new Cinematic(camera);
+const ui = new UI();
+const interiors = new Interiors(world, scene);
+Object.assign(api, { world, player, npcs, quests, dialogue, questWorld, ui, audio, cinematic, camera, scene, renderer, interiors });
+api.applyQuality = applyQuality;
+api.on = on;
 initInput(canvas);
 
-// Fragments du temps : un par époque, placé dans la ville de l'époque
-// (positions choisies hors des bâtiments : place, chantier, marais…)
-const FRAGMENT_LOCATIONS = {
-  contemporaine: { id: 'fragment-1', loc: 'phare-baleines', offset: [5, 0, -5] },
-  prehistoire:   { id: 'fragment-2', loc: 'portes',         offset: [14, 0, -6] },
-  antiquite:     { id: 'fragment-3', loc: 'sainte-marie',   offset: [-3, 0, 14] },
-  moyenage:      { id: 'fragment-4', loc: 'flotte',         offset: [20, 0, -16] },
-  xvii:          { id: 'fragment-5', loc: 'saint-martin',   offset: [26, 0, -7] },
-  xix:           { id: 'fragment-6', loc: 'ars',            offset: [-33, 0, 15] },
-  wwii:          { id: 'fragment-7', loc: 'bois-plage',     offset: [-4, 0, 18] },
-};
+on('quests', () => { questWorld.refresh(); npcs.sync(state.era); });
+on('flags', () => npcs.sync(state.era));
+on('hour', (h) => {
+  const inTown = Math.hypot(player.pos.x - world.townCenter.x, player.pos.z - world.townCenter.z) < 80;
+  if (inTown && ['moyenage', 'xvii', 'xix', 'wwii'].includes(state.era) && h >= 7 && h <= 21) audio.bell(h % 12 === 0 ? 3 : 1);
+});
 
-// Group qui contient le fragment courant
-const fragmentGroup = new THREE.Group();
-scene.add(fragmentGroup);
-
-function spawnFragment(eraId) {
-  while (fragmentGroup.children.length) {
-    const c = fragmentGroup.children.pop();
-    c.geometry?.dispose?.();
-    c.material?.dispose?.();
+// ---------- Voyage dans le temps ----------
+let traveling = false;
+async function travel(eraId, opts = {}) {
+  if (traveling && !opts.force) return;
+  traveling = true;
+  const silent = !!opts.silent;
+  if (!silent) {
+    releasePointer();
+    ui.eraFlash(true);
+    audio.sfx('portal');
+    await new Promise((r) => setTimeout(r, 750));
   }
-  const def = FRAGMENT_LOCATIONS[eraId];
-  if (!def) return;
-  if (hasItem(def.id)) return;
-  const loc = LOCATIONS.find((l) => l.id === def.loc);
-  const [ox, , oz] = def.offset;
-  const x = loc.position[0] + ox;
-  const z = loc.position[2] + oz;
-  const y = heightAt(x, z) + 1.5;
-  const geo = new THREE.OctahedronGeometry(0.5, 0);
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0xfff0a8,
-    emissive: 0xd4a857,
-    emissiveIntensity: 0.8,
-    metalness: 0.6,
-    roughness: 0.2,
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(x, y, z);
-  mesh.userData = { fragmentId: def.id };
-  fragmentGroup.add(mesh);
-
-  // Halo
-  const halo = new THREE.PointLight(0xd4a857, 1.5, 10);
-  halo.position.copy(mesh.position);
-  fragmentGroup.add(halo);
-}
-
-// ---------- Boucle de jeu ----------
-let lastTime = performance.now();
-let currentLocation = null;
-let started = false;
-
-function gameLoop(t) {
-  requestAnimationFrame(gameLoop);
-  const dt = Math.min(0.05, (t - lastTime) / 1000);
-  lastTime = t;
-  if (!started) return;
-
-  // Mises à jour
-  if (!isAnyPanelOpen()) {
-    player.update(dt);
-  }
-  dayNight.update(dt);
-  world.update(dt, t / 1000);
-  npcs.update(dt, t / 1000, player.position);
-
-  // Animation des fragments
-  for (const mesh of fragmentGroup.children) {
-    if (mesh.userData.fragmentId) {
-      mesh.rotation.y += dt * 1.4;
-      mesh.position.y += Math.sin(t * 0.003) * 0.005;
-    }
-  }
-
-  // Lieu courant : priorité à la ville de l'époque si on est dans ses environs
-  const eraTown = LOCATIONS.find((l) => l.id === getEra(state.era).town);
-  const dTown = Math.hypot(
-    eraTown.position[0] - player.position.x,
-    eraTown.position[2] - player.position.z
-  );
-  const nearest = dTown < 55 ? eraTown : nearestLocation(player.position.x, player.position.z, 45);
-  if (nearest !== currentLocation) {
-    currentLocation = nearest;
-    if (currentLocation) {
-      if (!state.visitedLocations.has(currentLocation.id)) {
-        state.visitedLocations.add(currentLocation.id);
-        showToast(`Lieu découvert : ${currentLocation.name}`, 'quest');
-      } else {
-        showToast(`Vous arrivez à ${currentLocation.name}`, 'quest');
-      }
-    }
-  }
-
-  // Interactions
-  handleInteractions();
-
-  // Inputs (panneaux)
-  handlePanelInputs();
-
-  // HUD
-  updateHUD(dayNight, currentLocation);
-  drawMinimap(player.position, player.yaw);
-
-  // Mouettes ponctuelles
-  if (Math.random() < 0.0008) audio.sfx('gull');
-
-  renderer.render(scene, camera);
-}
-
-function handleInteractions() {
-  if (isAnyPanelOpen()) { hideInteractHint(); return; }
-
-  // PNJ proche
-  const npc = npcs.nearest(player.position, 3.0);
-  if (npc) {
-    showInteractHint(`Parler à ${npc.userData.def.name}`);
-    if (justPressed('KeyE')) {
-      audio.sfx('click');
-      openDialogue(npc.userData.def, (kind, data) => {
-        if (kind === 'quest') {
-          questSystem.start(data);
-        }
-      });
-    }
-    return;
-  }
-
-  // Fragment proche
-  for (const mesh of fragmentGroup.children) {
-    if (!mesh.userData.fragmentId) continue;
-    const dx = mesh.position.x - player.position.x;
-    const dz = mesh.position.z - player.position.z;
-    const d = Math.hypot(dx, dz);
-    if (d < 2.5) {
-      showInteractHint('Récupérer le fragment');
-      if (justPressed('KeyE')) {
-        addItem(mesh.userData.fragmentId);
-        audio.sfx('pickup');
-        state.player.fragmentsCollected++;
-        questSystem.progressMain();
-        // Première fois -> auto-démarrer
-        if (!state.quests['q-main-fragments']) {
-          questSystem.start('q-main-fragments');
-        }
-        // Retire le fragment
-        while (fragmentGroup.children.length) {
-          fragmentGroup.children.pop();
-        }
-        if (state.player.fragmentsCollected >= 7) {
-          showToast('Tu as réuni les 7 fragments !', 'era');
-          setObjective('Retourne au Phare des Baleines pour terminer ton voyage.');
-        } else {
-          setObjective("Voyage vers une époque débloquée pour trouver le prochain fragment (T).");
-        }
-      }
-      return;
-    }
-  }
-
-  hideInteractHint();
-}
-
-function handlePanelInputs() {
-  if (justPressed('Escape')) {
-    if (isAnyPanelOpen()) closeAllPanels();
-    else document.getElementById('panel-pause').classList.remove('hidden');
-    return;
-  }
-  if (isDialogueOpen()) return;
-  if (justPressed('Tab')) {
-    if (document.getElementById('panel-inventory').classList.contains('hidden')) openInventory();
-    else closeAllPanels();
-  }
-  if (justPressed('KeyJ')) {
-    if (document.getElementById('panel-quests').classList.contains('hidden')) openQuestJournal();
-    else closeAllPanels();
-  }
-  if (justPressed('KeyM')) {
-    if (document.getElementById('panel-map').classList.contains('hidden')) openMap(player.position);
-    else closeAllPanels();
-  }
-  if (justPressed('KeyT')) {
-    if (document.getElementById('panel-era').classList.contains('hidden')) {
-      openEraPanel((eraId) => travelTo(eraId));
-    } else closeAllPanels();
-  }
-  if (justPressed('KeyB')) {
-    if (!player.swimming) player.toggleBike();
-  }
-}
-
-function travelTo(eraId, teleport = true) {
-  closeAllPanels();
+  if (dialogue.isOpen()) dialogue.abort();
+  if (interiors.inside) await interiors.exit(true);
+  player.dismount(true);
   state.era = eraId;
-  eraFlash();
-  audio.sfx('portal');
-  setTimeout(() => {
-    world.loadEra(eraId);
-    npcs.loadEra(eraId, LOCATIONS);
-    spawnFragment(eraId);
-    audio.playAmbient(eraId);
-    // Chaque époque se vit dans sa ville : le voyage temporel y téléporte.
-    const s = world.getSpawn();
-    if (teleport) player.teleportTo(s.x, s.z);
-    dayNight.setFocus(s.x, s.z);
-    const era = getEra(eraId);
-    showToast(`${era.name} — ${era.townName}`, 'era');
-    updateObjectiveForEra(eraId);
-  }, 200);
-}
-
-function updateObjectiveForEra(eraId) {
-  if (state.player.fragmentsCollected >= 7) {
-    setObjective('Retourne au Phare des Baleines.');
-    return;
+  const era = getEra(eraId);
+  if (!state.visited.includes(eraId)) state.visited.push(eraId);
+  world.loadEra(eraId, state.flags);
+  npcs.load(eraId);
+  questWorld.clear();
+  audio.setEra(eraId);
+  audio.clearSpatial();
+  world.eraGroup.updateMatrixWorld(true);
+  for (const l of world.lights) audio.addSpatial('fire', l.light.getWorldPosition(new THREE.Vector3()));
+  for (const s of Object.values(world.spots)) if (s.sound) audio.addSpatial(s.sound, { x: s.x, y: heightAt(s.x, s.z) + 1, z: s.z });
+  if (!opts.keepPos) {
+    const sp = world.spawn;
+    player.teleport(sp.x, sp.z, sp.rot ?? Math.PI);
   }
-  const def = FRAGMENT_LOCATIONS[eraId];
-  if (def && !hasItem(def.id)) {
-    const loc = LOCATIONS.find((l) => l.id === def.loc);
-    setObjective(`Trouve le fragment près de : ${loc.name}.`);
+  ui.mapEra = null;
+  if (!window.__dev?.noRender) { ui.buildMap(); ui.buildLocalMap(); }
+  quests.checkAuto();
+  if (state.tracked && quests.def(state.tracked)?.era !== eraId) quests.trackBest();
+  ERA_HOOKS[eraId]?.onEnter?.(api);
+  questWorld.refresh();
+  emit('era', eraId);
+  if (!silent) {
+    setTimeout(() => ui.eraFlash(false), 150);
+    if (!opts.noCine) cinematic.arrival(eraId, () => emit('arrived', eraId));
+    else emit('arrived', eraId);
+    ui.toast(`${era.icon} ${era.name} — ${era.townName}`, 'era');
+  }
+  traveling = false;
+}
+api.travel = travel;
+
+// Passer le temps : la nuit, dormir jusqu'au matin ; le jour, attendre le soir
+let passing = false;
+api.passTime = async (sleepOnly = false) => {
+  if (passing || traveling || cinematic.active || dialogue.isOpen()) return;
+  const h = state.time;
+  const night = h >= 20.5 || h < 6;
+  if (sleepOnly && !night) { ui.toast("Il fait encore jour : ce n'est pas l'heure de dormir.", 'info'); return; }
+  passing = true;
+  ui.fade(true);
+  await new Promise((r) => setTimeout(r, 650));
+  if (night) {
+    if (h >= 20.5) state.day++;
+    state.time = 7;
+    state.player.stamina = state.player.maxStamina;
+    ui.toast('🌅 Tu dors jusqu\'au matin. Il est 7 h.', 'info');
   } else {
-    setObjective("Explore. Parle aux habitants. Ouvre le portail (T).");
+    state.time = 21.4;
+    ui.toast('🌙 Tu laisses passer la journée. Le soir tombe.', 'info');
   }
-}
-
-// ---------- Boot ----------
-function setupTitleScreen() {
-  document.getElementById('btn-start').addEventListener('click', () => {
-    document.getElementById('title-screen').classList.add('hidden');
-    document.getElementById('hud').classList.remove('hidden');
-    audio.init();
-    audio.resume();
-    started = true;
-    canvas.requestPointerLock?.();
-    travelTo('contemporaine');
-  });
-
-  // Pause panel buttons
-  document.getElementById('resume').onclick = () => {
-    closeAllPanels();
-    canvas.requestPointerLock?.();
-  };
-  document.getElementById('save').onclick = () => {
-    if (save()) showToast('Partie sauvegardée.', 'quest');
-    else showToast('Échec de la sauvegarde.', 'item');
-  };
-  document.getElementById('load').onclick = () => {
-    if (load()) {
-      showToast('Partie chargée.', 'quest');
-      const [sx, , sz] = state.player.position;
-      travelTo(state.era, false);
-      // repositionne à l'endroit sauvegardé une fois le monde reconstruit
-      setTimeout(() => player.teleportTo(sx, sz), 250);
-    } else {
-      showToast('Aucune sauvegarde trouvée.', 'item');
-    }
-    closeAllPanels();
-  };
-  document.getElementById('quit').onclick = () => {
-    reset();
-    started = false;
-    closeAllPanels();
-    document.getElementById('hud').classList.add('hidden');
-    document.getElementById('title-screen').classList.remove('hidden');
-  };
-}
-
-async function preload() {
-  const bar = document.getElementById('loadingBar');
-  const hint = document.getElementById('loadingHint');
-  const steps = [
-    ['Cartographie de l\'île…', () => world.build()],
-    ['Génération du terrain…', () => {}],
-    ['Réveil de l\'océan…', () => {}],
-    ['Plantation des pinèdes…', () => world.loadEra('contemporaine')],
-    ['Convocation des habitants…', () => npcs.loadEra('contemporaine', LOCATIONS)],
-    ['Calibrage du portail temporel…', () => {}],
-  ];
-  for (let i = 0; i < steps.length; i++) {
-    hint.textContent = steps[i][0];
-    bar.style.width = `${((i + 1) / steps.length) * 100}%`;
-    await new Promise((r) => setTimeout(r, 200));
-    try { steps[i][1](); } catch (e) { console.error(e); }
-  }
-  document.getElementById('loading').classList.add('hidden');
-  document.getElementById('title-screen').classList.remove('hidden');
-}
-
-// Crochet de debug (utilisé par les tests automatisés). Sans effet sur le jeu.
-window.__dev = {
-  travelTo,
-  unlockAll: () => ERAS.forEach((e) => state.unlockedEras.add(e.id)),
-  get state() { return state; },
+  emit('hour', Math.floor(state.time));
+  await new Promise((r) => setTimeout(r, 250));
+  ui.fade(false);
+  passing = false;
 };
 
-setupTitleScreen();
-preload();
+function restore() {
+  player.setAvatar(state.avatar);
+  const p = { ...state.player };
+  travel(state.era, { silent: true, keepPos: true, force: true }).then(() => {
+    player.teleport(p.x, p.z, p.yaw);
+    state.player.stamina = p.stamina ?? 100;
+    ui.toast('Partie chargée.', 'info');
+  });
+}
+api.restore = restore;
 
-// Lance la boucle (même avant l'écran titre, pour le rendu de fond)
-requestAnimationFrame(gameLoop);
+let started = false;
+function quitToTitle() {
+  started = false;
+  ui.showHUD(false);
+  $('#title').classList.remove('hidden');
+  $('#btn-continue').classList.toggle('hidden', !hasSave());
+  $('#title-menu').classList.remove('hidden');
+  $('#avatar-pick').classList.add('hidden');
+  releasePointer();
+}
+api.quitToTitle = quitToTitle;
+
+// ---------- Écran titre ----------
+function setupTitle() {
+  $('#btn-continue').classList.toggle('hidden', !hasSave());
+  $('#btn-new').onclick = () => {
+    audio.init(); audio.resume();
+    $('#title-menu').classList.add('hidden');
+    $('#avatar-pick').classList.remove('hidden');
+    document.querySelectorAll('.avatar').forEach((b) => {
+      const id = b.dataset.avatar;
+      b.querySelector('img').src = ui.portraits.get('title:' + id, look('player', id));
+      b.onclick = () => newGame(id);
+    });
+  };
+  $('#btn-back').onclick = () => { $('#title-menu').classList.remove('hidden'); $('#avatar-pick').classList.add('hidden'); };
+  $('#btn-continue').onclick = () => {
+    audio.init(); audio.resume();
+    if (!load()) { ui.toast('Sauvegarde illisible.', 'info'); return; }
+    $('#title').classList.add('hidden');
+    started = true;
+    ui.showHUD(true);
+    applyQuality();
+    audio.applyVolume();
+    restore();
+  };
+  $('#btn-help').onclick = () => { $('#title').classList.add('hidden'); ui.openHelp(); ui.onPanelClose = () => $('#title').classList.remove('hidden'); };
+}
+
+async function newGame(avatar) {
+  resetState(avatar);
+  player.setAvatar(avatar);
+  $('#title').classList.add('hidden');
+  started = true;
+  applyQuality();
+  await travel('contemporaine', { silent: true, force: true });
+  cinematic.play('intro', () => {
+    ui.showHUD(true);
+    quests.start('pro.m1');
+    dialogue.start('pro.opening');
+  });
+}
+
+// ---------- Boucle ----------
+let last = performance.now();
+
+// Qualité adaptative : si l'image est trop lente, on allège le rendu
+const perf = { t: 0, frames: 0, sum: 0, checks: 0 };
+function adaptQuality(dt) {
+  if (window.__dev?.noRender || perf.checks >= 3) return;
+  perf.t += dt; perf.frames++; perf.sum += dt;
+  if (perf.t < 6) return;
+  const avg = perf.sum / perf.frames;
+  perf.t = 0; perf.frames = 0; perf.sum = 0; perf.checks++;
+  const q = state.options.quality;
+  if (avg > 0.045 && q !== 'low') {
+    state.options.quality = q === 'high' ? 'medium' : 'low';
+    applyQuality();
+    ui.toast(`Qualité graphique réduite (${state.options.quality === 'medium' ? 'moyenne' : 'basse'}) pour garder le jeu fluide.`, 'info');
+  }
+}
+let saveT = 0;
+let titleT = 0;
+function loop(now) {
+  requestAnimationFrame(loop);
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  const t = now / 1000;
+  if (!dayNight) { renderer.render(scene, camera); endFrame(); return; }
+
+  if (started) {
+    if (cinematic.active) cinematic.update(dt);
+    else player.update(dt);
+    const p = player.pos;
+    dayNight.update(dt, p);
+    world.night = dayNight.night;
+    world.update(dt, t, state.time, camera);
+    interiors.update(dt, dayNight.daylight ?? 1);
+    world.fauna.playerPos.copy(p);
+    world.fauna.playerSpeed = player.speed;
+    npcs.update(dt, { player: p, hour: state.time, camera, playerSpeed: player.speed, onBike: player.mode === 'bike' });
+    if (!cinematic.active) {
+      quests.tick(p);
+      interaction.update();
+      ui.handleKeys();
+    }
+    questWorld.update(dt, t, p);
+    ui.update(dt);
+    const inTown = Math.hypot(p.x - world.townCenter.x, p.z - world.townCenter.z) < 60;
+    audio.update(dt, camera, { inTown, night: dayNight.isNight() });
+    ERA_HOOKS[state.era]?.onUpdate?.(api, dt);
+    state.stats.playTime += dt;
+    saveT += dt;
+    adaptQuality(dt);
+    if (saveT > 90 && !cinematic.active && !dialogue.isOpen()) { saveT = 0; save(); }
+  } else {
+    // fond animé de l'écran titre : lent travelling autour du phare
+    titleT += dt;
+    const c = world.townCenter;
+    const a = titleT * 0.05 + 2.2;
+    const h = heightAt(c.x, c.z);
+    camera.position.set(c.x + Math.sin(a) * 70, h + 26, c.z + Math.cos(a) * 70);
+    camera.lookAt(c.x, h + 16, c.z);
+    dayNight.update(0, { x: c.x, z: c.z });
+    world.night = dayNight.night;
+    world.update(dt, t, state.time, camera);
+  }
+  if (!window.__dev.noRender) {
+    pipeline.updateEnvironment(dt, { indoor: !!world.indoor, night: world.night ?? 0 });
+    renderer.toneMappingExposure = dayNight.exposure ?? 1;
+    pipeline.render();
+  }
+  endFrame();
+}
+
+// ---------- Chargement ----------
+async function boot() {
+  if (window.__forceQuality) state.options.quality = window.__forceQuality;
+  const bar = $('#loading-bar'), hint = $('#loading-hint');
+  const step = async (label, k, fn) => {
+    hint.textContent = label;
+    bar.style.width = `${k}%`;
+    await new Promise((r) => setTimeout(r, 30));
+    await fn();
+  };
+  await step('Chargement des polices d\'époque…', 10, () => loadFonts());
+  await step("Relevé de la côte et des marais…", 30, () => { world.build(); pipeline.setSky(world.sky.mesh.material); });
+  await step('Allumage du phare…', 55, () => { dayNight = new DayNight(scene, world); api.dayNight = dayNight; applyQuality(); });
+  await step('Les habitants se réveillent…', 80, () => travel('contemporaine', { silent: true, force: true }));
+  await step('Réglage de l\'Astrolabe…', 100, () => {});
+  state.time = 19.2;
+  $('#loading').classList.add('hidden');
+  $('#title').classList.remove('hidden');
+  setupTitle();
+}
+
+// ---------- Outils de test (utilisés par les tests automatisés) ----------
+window.__dev = {
+  api, state, S, travel, save, load,
+  newGame, quests, get started() { return started; },
+  unlockAll() { for (const e of ['prehistoire', 'antiquite', 'moyenage', 'xvii', 'xix', 'wwii', 'contemporaine']) if (!state.unlockedEras.includes(e)) state.unlockedEras.push(e); },
+  teleport(x, z) { player.teleport(x, z); },
+  stats: () => ({ ...world.stats, calls: renderer.info.render.calls, tris: renderer.info.render.triangles }),
+  bot: () => import('./dev/bot.js'),
+  gfx: { renderer, scene, camera, pipeline },
+};
+api.interaction = interaction;
+
+requestAnimationFrame(loop);
+boot().catch((e) => { console.error(e); $('#loading-hint').textContent = 'Erreur de chargement : ' + e.message; });

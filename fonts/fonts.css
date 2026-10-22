@@ -1,0 +1,12 @@
+/* Polices embarquées (licences libres OFL / Apache 2.0, voir fonts/LICENCES.md) */
+@font-face { font-family: 'Cinzel'; font-weight: 600; font-display: swap; src: url(Cinzel-600.woff2) format('woff2'); }
+@font-face { font-family: 'UnifrakturMaguntia'; font-weight: 400; font-display: swap; src: url(UnifrakturMaguntia-400.woff2) format('woff2'); }
+@font-face { font-family: 'Pirata One'; font-weight: 400; font-display: swap; src: url(PirataOne-400.woff2) format('woff2'); }
+@font-face { font-family: 'IM Fell English'; font-weight: 400; font-display: swap; src: url(IMFellEnglish-400.woff2) format('woff2'); }
+@font-face { font-family: 'Abril Fatface'; font-weight: 400; font-display: swap; src: url(AbrilFatface-400.woff2) format('woff2'); }
+@font-face { font-family: 'Rye'; font-weight: 400; font-display: swap; src: url(Rye-400.woff2) format('woff2'); }
+@font-face { font-family: 'Special Elite'; font-weight: 400; font-display: swap; src: url(SpecialElite-400.woff2) format('woff2'); }
+@font-face { font-family: 'Montserrat'; font-weight: 700; font-display: swap; src: url(Montserrat-700.woff2) format('woff2'); }
+@font-face { font-family: 'Cormorant Garamond'; font-weight: 500; font-display: swap; src: url(CormorantGaramond-500.woff2) format('woff2'); }
+@font-face { font-family: 'Cormorant Garamond'; font-weight: 700; font-display: swap; src: url(CormorantGaramond-700.woff2) format('woff2'); }
+@font-face { font-family: 'Cormorant Garamond'; font-style: italic; font-weight: 500; font-display: swap; src: url(CormorantGaramond-500i.woff2) format('woff2'); }
