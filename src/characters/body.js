@@ -176,15 +176,27 @@ export function garmentField(M, g) {
   };
 }
 
-export function bodyField(M) {
+// cover : parties cachées par les vêtements ajustés, inutiles à générer
+//   { trunk: bool, arms: fraction couverte (0..1), legsTo: hauteur du bas du pantalon, hands: bool }
+export function bodyField(M, cover = {}) {
+  const keepArm = (a, x, y, z) => {
+    const d = armD(M, a, x, y, z);
+    const len = cover.arms ?? 0;
+    if (len <= 0) return d;
+    const m = 0.03;
+    if (len > 0.53) return Math.max(d, -(cutAlong(a.E, a.H, (len - 0.53) / 0.47, x, y, z) + m));
+    return Math.max(d, -(cutAlong(a.S, a.E, len / 0.53, x, y, z) + m));
+  };
   return (x, y, z) => {
     const c = components(M, x, y, z);
-    let d = smin(c.trunk, c.neck, 0.05);
-    d = smin(d, c.armL, 0.028);
-    d = smin(d, c.armR, 0.028);
-    d = smin(d, c.handL, 0.02);
-    d = smin(d, c.handR, 0.02);
-    d = smin(d, Math.min(c.legL, c.legR), 0.04);
+    const tr = cover.trunk ? Math.max(c.trunk, 1.36 - y) : c.trunk;
+    let d = smin(tr, c.neck, 0.05);
+    d = smin(d, keepArm(M.armL, x, y, z), 0.028);
+    d = smin(d, keepArm(M.armR, x, y, z), 0.028);
+    if (!cover.hands) { d = smin(d, c.handL, 0.02); d = smin(d, c.handR, 0.02); }
+    let lg = Math.min(c.legL, c.legR);
+    if (cover.legsTo !== undefined) lg = Math.max(lg, y - (cover.legsTo + 0.04));
+    d = smin(d, lg, 0.04);
     return d;
   };
 }

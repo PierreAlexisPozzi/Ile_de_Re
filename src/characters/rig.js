@@ -239,9 +239,18 @@ export class Character {
     // ---------- Corps continu (peau skinnée) et vêtements ajustés ----------
     const M = makeMorph({ sex, build, P, PV, tScale, pScale, limbK, legK: (sex === 'f' ? 1.02 : 1) * (build === 'stout' ? 1.1 : build === 'slim' ? 0.94 : 1), shoulderX, hipX: sex === 'f' ? 0.1 : 0.095 });
     const mKey = `${sex}-${build}`;
-    const layers = [{ key: 'body', field: bodyField(M), mat: skin }];
     const sameSleeve = !o.sleeveMat;
     const armLen = { long: 1, rolled: 0.62, short: 0.34, none: 0 }[sleeves] ?? 1;
+    const legSpan0 = { trousers: [0.93, 0.07], hose: [0.93, 0.07], breeches: [0.93, 0.44], shorts: [0.93, 0.62], wrapped: [0.93, 0.07], bare: null }[legs];
+    // la peau n'est générée que là où les vêtements ajustés ne la cachent pas
+    const cover = {
+      trunk: true,
+      arms: Math.max(armLen, o.coat && !o.coat.sleeveless ? 0.985 : 0),
+      legsTo: legSpan0 ? (legs === 'breeches' ? 0.07 : legSpan0[1]) : undefined,
+      hands: !!o.gloves,
+    };
+    const cKey = `${cover.arms}-${cover.legsTo ?? 'n'}-${cover.hands ? 1 : 0}`;
+    const layers = [{ key: `body-${cKey}`, field: bodyField(M, cover), mat: skin, step: 0.02 }];
     const topLayer = (key, spec, mat) => layers.push({ key, field: garmentField(M, spec), mat });
     // chemise / tunique de dessous (manches comprises si même tissu)
     topLayer(`top-${sameSleeve ? armLen : 0}`, { trunk: [0.93, 2], arms: sameSleeve ? armLen : 0, off: 0.005 }, topM);
@@ -249,7 +258,7 @@ export class Character {
     // manches du manteau ou de la veste
     if (o.coat && !o.coat.sleeveless) topLayer('coatsleeve', { arms: 0.985, off: 0.011 }, coatM);
     // bas : pantalon, culotte, short, chausses, ou simple linge sous la tunique
-    const legSpan = { trousers: [0.93, 0.07], hose: [0.93, 0.07], breeches: [0.93, 0.44], shorts: [0.93, 0.62], wrapped: [0.93, 0.07], bare: null }[legs];
+    const legSpan = legSpan0;
     topLayer(`bottom-${legs}`, { trunk: [0.6, 1.0], legs: legSpan ?? undefined, off: legs === 'hose' ? 0.004 : 0.0065 }, botM);
     if (legs === 'breeches') topLayer('stockings', { legs: [0.47, 0.07], off: 0.0045 }, stockM);
     if (legs === 'wrapped') topLayer('wraps', { legs: [0.42, 0.09], off: 0.011 }, wrapM);
@@ -260,7 +269,7 @@ export class Character {
     this.group.updateMatrixWorld(true);
     const skeleton = new THREE.Skeleton(BONES.map((n) => j[n]));
     for (const L of layers) {
-      const sm = new THREE.SkinnedMesh(skinnedGeometry(`${mKey}-${L.key}`, M, L.field), L.mat);
+      const sm = new THREE.SkinnedMesh(skinnedGeometry(`${mKey}-${L.key}`, M, L.field, L.step ?? 0.024), L.mat);
       sm.castShadow = true;
       sm.receiveShadow = true;
       sm.frustumCulled = false;
@@ -307,7 +316,7 @@ export class Character {
       hairline: s.face?.hairline ?? (sex === 'f' ? 0.25 : 0.5),
     };
     const fo = { sex, age };
-    const headGeo = C.geo(`head2-${sex}-${age}`, () => C.sculptHeadGeometry(new THREE.SphereGeometry(C.HEAD_R, 56, 42), C.HEAD_R, fo));
+    const headGeo = C.geo(`head2-${sex}-${age}`, () => C.sculptHeadGeometry(new THREE.SphereGeometry(C.HEAD_R, 44, 34), C.HEAD_R, fo));
     const head = part(headGeo, headMaterial(faceOpts));
     j.headC.add(head);
     // yeux en relief (globe brillant, iris, paupières qui clignent)
