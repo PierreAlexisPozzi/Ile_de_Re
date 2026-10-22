@@ -177,7 +177,7 @@ export function faceTexture(opts = {}) {
   // --- bouche ---
   const lipColor = lips ?? (sex === 'f' ? (makeup ? 0xa8343c : 0xb86a66) : 0xa8706a);
   const my = 172;
-  const mw = child ? 11 : 14;
+  const mw = child ? 14 : sex === 'f' ? 18 : 20;
   // lèvre supérieure
   ctx.fillStyle = rgb(lipColor, 0.85);
   ctx.beginPath();

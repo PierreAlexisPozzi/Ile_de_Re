@@ -14,8 +14,8 @@ function base() {
     hipsY: 0, hipsRx: 0, hipsRy: 0, hipsRz: 0,
     spineRx: 0, spineRy: 0, spineRz: 0,
     headRx: 0, headRy: 0, headRz: 0,
-    armLx: 0, armLz: 0.09, armRx: 0, armRz: -0.09,
-    elbowL: -0.12, elbowR: -0.12, handLx: 0, handRx: 0,
+    armLx: -0.04, armLz: 0.11, armRx: -0.04, armRz: -0.11,
+    elbowL: -0.22, elbowR: -0.22, handLx: 0, handRx: 0,
     legLx: 0, legLz: 0.02, legRx: 0, legRz: -0.02,
     kneeL: 0.03, kneeR: 0.03, ankleL: 0, ankleR: 0,
     hold: 0,          // inclinaison supplémentaire des objets tenus
@@ -33,6 +33,26 @@ const ACTIONS = {
     P.kneeR += Math.max(0, Math.sin(t * 0.35 + s)) * 0.08;
     P.headRy += Math.sin(t * 0.31 + s * 2) * 0.22 * c.curiosity;
     P.headRx += Math.sin(t * 0.23 + s) * 0.05;
+    P.headRz += Math.sin(t * 0.19 + s * 3) * 0.04;
+    // attitude propre à chacun : bras ballants, poing sur la hanche, bras croisés, mains jointes
+    const freeL = !c.propL, freeR = !c.propR;
+    switch (c.idleStyle) {
+      case 1:
+        if (freeR) { P.armRz = -0.62; P.armRx = 0.12; P.elbowR = -1.55; }
+        break;
+      case 2:
+        if (freeL && freeR) {
+          P.armLx = -0.42; P.armLz = -0.12; P.elbowL = -1.95;
+          P.armRx = -0.48; P.armRz = 0.14; P.elbowR = -1.85;
+        }
+        break;
+      case 3:
+        if (freeL && freeR) {
+          P.armLx = -0.18; P.armLz = -0.08; P.elbowL = -1.0;
+          P.armRx = -0.2; P.armRz = 0.08; P.elbowR = -0.95;
+        }
+        break;
+    }
   },
   talk(P, t, c) {
     ACTIONS.idle(P, t, c);

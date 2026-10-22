@@ -47,7 +47,7 @@ export class Player {
   setAvatar(id) {
     if (this.char) this.group.remove(this.char.group);
     const spec = look('player', id === 'exploratrice' ? 'exploratrice' : id === 'aventurier' ? 'aventurier' : 'explorer');
-    this.char = buildCharacter(spec);
+    this.char = buildCharacter({ ...spec, idleStyle: 0 });
     this.char.curiosity = 0.3;
     this.group.add(this.char.group);
     this.name = id === 'exploratrice' ? 'Sacha' : id === 'aventurier' ? 'Sacha' : 'Sacha';

@@ -33,7 +33,7 @@ export class PortraitRenderer {
   get(key, spec) {
     if (this.cache.has(key)) return this.cache.get(key);
     if (!this.renderer || !spec) return '';
-    const c = buildCharacter({ ...spec, action: 'idle' });
+    const c = buildCharacter({ ...spec, action: 'idle', idleStyle: 0 });
     c.update(0.016);
     c.group.rotation.y = 0.28;
     this.scene.add(c.group);

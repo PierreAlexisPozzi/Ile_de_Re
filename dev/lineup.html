@@ -29,7 +29,7 @@ const cam = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 100);
 scene.add(new THREE.HemisphereLight(0xdde8f0, 0x6a5a40, 1.1));
 const sun = new THREE.DirectionalLight(0xfff0d8, 2.2);
 sun.position.set(3, 6, 5); sun.castShadow = true;
-sun.shadow.camera.left = -8; sun.shadow.camera.right = 8; sun.shadow.camera.top = 4; sun.shadow.camera.bottom = -2;
+sun.shadow.camera.left = -8; sun.shadow.camera.right = 8; sun.shadow.camera.top = 4; sun.shadow.camera.bottom = -2; sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02;
 scene.add(sun);
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 20), new THREE.MeshStandardMaterial({ color: 0xb8a888 }));
 ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
@@ -52,7 +52,7 @@ const w = names.length * 0.9 + 1.5;
 const dist = (w / 2) / Math.tan((30 * Math.PI / 180) / 2) / (innerWidth / innerHeight) / zoom;
 cam.position.set(0, 1.1, Math.max(4, dist * 1.05));
 cam.lookAt(0, 0.95, 0);
-if (params.get('close')) { const k = parseInt(params.get('close')); cam.position.set(chars[k].group.position.x, 1.62, 1.1); cam.lookAt(chars[k].group.position.x, 1.55, 0); }
+if (params.get('close')) { const k = parseInt(params.get('close')); cam.position.set(chars[k].group.position.x, 1.62, 0.75); cam.lookAt(chars[k].group.position.x, 1.55, 0); }
 let last = performance.now();
 const speed = parseFloat(params.get('speed') || '0');
 function loop(t) {
