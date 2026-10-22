@@ -37,9 +37,14 @@ export class AudioManager {
     if (this.ctx) return;
     const C = window.AudioContext || window.webkitAudioContext;
     if (!C) return;
-    const ctx = new C();
+    // tampon audio plus large : évite les craquements quand le rendu 3D est chargé
+    let ctx;
+    try { ctx = new C({ latencyHint: 'playback' }); } catch (e) { ctx = new C(); }
     this.ctx = ctx;
+    // compression douce (un compresseur trop serré fait « pomper » le bruit de fond)
     this.comp = ctx.createDynamicsCompressor();
+    this.comp.threshold.value = -12; this.comp.knee.value = 12; this.comp.ratio.value = 3;
+    this.comp.attack.value = 0.01; this.comp.release.value = 0.3;
     this.comp.connect(ctx.destination);
     this.master = ctx.createGain();
     this.master.connect(this.comp);
@@ -62,6 +67,8 @@ export class AudioManager {
     this.revGain.gain.value = 0.28;
     this.reverb.connect(this.revGain).connect(this.master);
     this.noiseBuf = this.makeNoise();
+    this.pinkBuf = this.makeNoise('pink');
+    this.brownBuf = this.makeNoise('brown');
     this.applyVolume();
     this.startAmbience();
     this.timer = setInterval(() => this.schedule(), 90);
@@ -75,10 +82,34 @@ export class AudioManager {
     this.music.gain.value = (state.options.music ?? 0.6) * 0.5;
   }
 
-  makeNoise() {
-    const b = this.ctx.createBuffer(1, this.ctx.sampleRate * 2, this.ctx.sampleRate);
+  // Bruits de fond : blanc (souffles brefs), rose (vent, rumeur), brun (ressac).
+  // Les bruits rose et brun sont bien plus doux à l'oreille que le blanc filtré,
+  // qui sonne comme une friture. Leur boucle est raccordée sans saut (pas de clic).
+  makeNoise(kind = 'white') {
+    const len = this.ctx.sampleRate * (kind === 'white' ? 2 : 6);
+    const b = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const d = b.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    let b0 = 0, b1 = 0, b2 = 0, br = 0;
+    for (let i = 0; i < len; i++) {
+      const w = Math.random() * 2 - 1;
+      if (kind === 'pink') {
+        b0 = 0.99765 * b0 + w * 0.099046; b1 = 0.963 * b1 + w * 0.2965164; b2 = 0.57 * b2 + w * 1.0526913;
+        d[i] = (b0 + b1 + b2 + w * 0.1848) * 0.2;
+      } else if (kind === 'brown') {
+        br = (br + 0.02 * w) / 1.02;
+        d[i] = br * 3.2;
+      } else d[i] = w;
+    }
+    if (kind !== 'white') {
+      // retire la dérive pour que la fin rejoigne le début, puis fondu de raccord
+      const drift = d[len - 1] - d[0];
+      for (let i = 0; i < len; i++) d[i] -= drift * (i / (len - 1));
+      const F = Math.floor(this.ctx.sampleRate * 0.05);
+      for (let i = 0; i < F; i++) { const k = i / F; d[len - F + i] = d[len - F + i] * (1 - k) + d[i] * k; }
+      let peak = 0;
+      for (let i = 0; i < len; i++) peak = Math.max(peak, Math.abs(d[i]));
+      for (let i = 0; i < len; i++) d[i] *= 0.9 / peak;
+    }
     return b;
   }
 
@@ -241,7 +272,7 @@ export class AudioManager {
       const n = c.createBufferSource(); n.buffer = this.noiseBuf;
       const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 4000;
       n.connect(hp).connect(g);
-      g.gain.setValueAtTime(vol * 0.3, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
+      g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol * 0.3, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
       n.start(t); n.stop(t + 0.2);
       return;
     }
@@ -249,26 +280,30 @@ export class AudioManager {
     o.frequency.setValueAtTime(kind === 'skin' ? 90 : 140, t);
     o.frequency.exponentialRampToValueAtTime(50, t + 0.25);
     o.connect(g);
-    g.gain.setValueAtTime(vol, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.005);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
     o.start(t); o.stop(t + 0.4);
   }
 
   // ---------- Ambiances ----------
-  loopNoise(type, freq, q = 0.7) {
+  loopNoise(buf, type, freq, q = 0.7, offset = 0) {
     const c = this.ctx;
-    const n = c.createBufferSource(); n.buffer = this.noiseBuf; n.loop = true;
+    const n = c.createBufferSource(); n.buffer = buf; n.loop = true;
     const f = c.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+    // second filtre en série : coupe franche des aigus (plus de souffle sifflant)
+    const f2 = c.createBiquadFilter(); f2.type = 'lowpass'; f2.frequency.value = Math.max(freq * 2.2, 900);
     const g = c.createGain(); g.gain.value = 0;
-    n.connect(f).connect(g).connect(this.amb);
-    n.start();
+    n.connect(f).connect(f2).connect(g).connect(this.amb);
+    n.start(c.currentTime, offset);
     return { n, f, g };
   }
 
   startAmbience() {
-    this.waves = this.loopNoise('lowpass', 520);
-    this.wind = this.loopNoise('bandpass', 700, 0.4);
-    this.crowd = this.loopNoise('bandpass', 450, 1.2);
+    this.waves = this.loopNoise(this.brownBuf, 'lowpass', 700, 0.5);
+    this.foam = this.loopNoise(this.pinkBuf, 'bandpass', 1100, 0.5, 2.7);
+    this.wind = this.loopNoise(this.pinkBuf, 'bandpass', 520, 0.6, 1.3);
+    this.crowd = this.loopNoise(this.pinkBuf, 'bandpass', 420, 0.9, 4.1);
     this.ambT = 0;
   }
 
@@ -292,19 +327,23 @@ export class AudioManager {
         if (heightAt(p.x + Math.cos(a * 0.785) * r, p.z + Math.sin(a * 0.785) * r) < 0) { sea = Math.max(sea, 1 - r / 34); }
       }
     }
-    const swell = 0.6 + 0.4 * Math.sin(this.ambT * 0.7) * Math.sin(this.ambT * 0.31);
-    const set = (node, v) => node.g.gain.setTargetAtTime(v, c.currentTime, 0.4);
-    set(this.waves, sea * 0.22 * swell);
-    set(this.wind, (state.weather === 'rain' ? 0.08 : 0.025) + Math.max(0, p.y - 4) * 0.004);
-    this.wind.f.frequency.value = 600 + Math.sin(this.ambT * 0.2) * 250;
-    set(this.crowd, info.inTown && !info.night ? 0.03 : 0.0);
+    // houle : vagues qui montent et se retirent (deux périodes non multiples)
+    const swell = 0.55 + 0.45 * Math.max(0, Math.sin(this.ambT * 0.9) * 0.6 + Math.sin(this.ambT * 0.37) * 0.4);
+    const now = c.currentTime;
+    const set = (node, v, tc = 0.4) => { node.g.gain.cancelScheduledValues(now); node.g.gain.setTargetAtTime(v, now, tc); };
+    set(this.waves, sea * 0.17 * swell);
+    set(this.foam, sea * 0.05 * swell * swell, 0.6);
+    set(this.wind, (state.weather === 'rain' ? 0.06 : 0.02) + Math.min(0.03, Math.max(0, p.y - 4) * 0.003), 0.8);
+    this.wind.f.frequency.setTargetAtTime(480 + Math.sin(this.ambT * 0.2) * 160, now, 1.5);
+    set(this.crowd, info.inTown && !info.night ? 0.025 : 0.0, 0.8);
     // oiseaux le jour, grillons la nuit, mouettes au bord de l'eau
     if (!info.night && Math.random() < dt * 0.5) this.chirp();
-    if (info.night && Math.random() < dt * 2.5) this.cricket();
+    if (info.night && Math.random() < dt * 0.9) this.cricket();
     if (sea > 0.3 && Math.random() < dt * 0.12) this.sfx('gull');
     for (const s of this.spatial) {
       s.pan.positionX.value = s.pos.x; s.pan.positionY.value = s.pos.y; s.pan.positionZ.value = s.pos.z;
       if (s.kind === 'forge' && Math.random() < dt * 1.4) this.clang(s);
+      if (s.kind === 'fire' && Math.random() < dt * 2.2) this.crackle(s);
     }
   }
 
@@ -317,13 +356,20 @@ export class AudioManager {
     g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.018, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
     o.connect(g).connect(this.amb); o.start(t); o.stop(t + 0.25);
   }
+  // stridulation : trains de 3-4 impulsions à enveloppe douce (pas de clics)
   cricket() {
-    const c = this.ctx, t = c.currentTime;
+    const c = this.ctx, t = c.currentTime + 0.02;
     const o = c.createOscillator(), g = c.createGain();
-    o.frequency.value = 4400 + Math.random() * 300;
-    g.gain.setValueAtTime(0.0001, t);
-    for (let i = 0; i < 3; i++) { g.gain.setValueAtTime(0.008, t + i * 0.05); g.gain.setValueAtTime(0.0001, t + i * 0.05 + 0.025); }
-    o.connect(g).connect(this.amb); o.start(t); o.stop(t + 0.2);
+    o.frequency.value = 3900 + Math.random() * 500;
+    const n = 3 + Math.floor(Math.random() * 2), v = 0.004 + Math.random() * 0.003;
+    g.gain.setValueAtTime(0, t);
+    for (let i = 0; i < n; i++) {
+      const s = t + i * 0.055;
+      g.gain.linearRampToValueAtTime(0, s);
+      g.gain.linearRampToValueAtTime(v, s + 0.012);
+      g.gain.linearRampToValueAtTime(0, s + 0.032);
+    }
+    o.connect(g).connect(this.amb); o.start(t); o.stop(t + n * 0.055 + 0.05);
   }
 
   // Sources sonores placées dans le monde (feu, forge)
@@ -339,20 +385,30 @@ export class AudioManager {
     pan.connect(this.amb);
     const s = { kind, pos, pan };
     if (kind === 'fire') {
-      const n = c.createBufferSource(); n.buffer = this.noiseBuf; n.loop = true;
-      const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1400; f.Q.value = 0.6;
-      const g = c.createGain(); g.gain.value = 0.18;
-      n.connect(f).connect(g).connect(pan); n.start();
+      // ronflement grave du foyer ; les crépitements sont ajoutés un à un (crackle)
+      const n = c.createBufferSource(); n.buffer = this.brownBuf; n.loop = true;
+      const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 420;
+      const g = c.createGain(); g.gain.value = 0.09;
+      n.connect(f).connect(g).connect(pan); n.start(c.currentTime, Math.random() * 5);
       s.src = n;
     }
     this.spatial.push(s);
+  }
+  crackle(s) {
+    const c = this.ctx, t = c.currentTime + 0.01;
+    const n = c.createBufferSource(); n.buffer = this.noiseBuf;
+    const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1800 + Math.random() * 2200; f.Q.value = 1.2;
+    const g = c.createGain();
+    const v = 0.05 + Math.random() * 0.07, d = 0.02 + Math.random() * 0.04;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + 0.003); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    n.connect(f).connect(g).connect(s.pan); n.start(t, Math.random() * 1.5); n.stop(t + d + 0.02);
   }
   clang(s) {
     const c = this.ctx, t = c.currentTime;
     for (const f of [1200, 1830, 2650]) {
       const o = c.createOscillator(), g = c.createGain();
       o.frequency.value = f; o.type = 'triangle';
-      g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+      g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.12, t + 0.003); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
       o.connect(g).connect(s.pan); o.start(t); o.stop(t + 0.7);
     }
   }
@@ -365,7 +421,7 @@ export class AudioManager {
       for (const [f, v] of [[220, 0.12], [440, 0.06], [552, 0.04], [660, 0.03]]) {
         const o = c.createOscillator(), g = c.createGain();
         o.frequency.value = f;
-        g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 3);
+        g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(v, t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + 3);
         o.connect(g).connect(this.amb); g.connect(this.reverb); o.start(t); o.stop(t + 3.1);
       }
     }
@@ -383,7 +439,8 @@ export class AudioManager {
       o.type = type;
       o.frequency.setValueAtTime(f0, t);
       o.frequency.exponentialRampToValueAtTime(f1, t + dur * 0.8);
-      g.gain.setValueAtTime(vol, t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(vol, t + 0.004);
       g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
       o.start(t); o.stop(t + dur + 0.05);
     };
@@ -397,7 +454,7 @@ export class AudioManager {
       case 'shutter': {
         const n = c.createBufferSource(); n.buffer = this.noiseBuf;
         const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2500;
-        n.connect(hp).connect(g); g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+        n.connect(hp).connect(g); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.25, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
         n.start(t); n.stop(t + 0.15);
         break;
       }
@@ -405,21 +462,21 @@ export class AudioManager {
         tone(110, 1760, 2.2, 0.16, 'sine');
         const o2 = c.createOscillator(), g2 = c.createGain();
         o2.frequency.setValueAtTime(330, t); o2.frequency.exponentialRampToValueAtTime(2200, t + 2);
-        g2.gain.setValueAtTime(0.06, t); g2.gain.exponentialRampToValueAtTime(0.0001, t + 2.4);
+        g2.gain.setValueAtTime(0.0001, t); g2.gain.linearRampToValueAtTime(0.06, t + 0.005); g2.gain.exponentialRampToValueAtTime(0.0001, t + 2.4);
         o2.connect(g2).connect(this.reverb); o2.start(t); o2.stop(t + 2.5);
         break;
       }
       case 'gull': {
         o.type = 'triangle';
         o.frequency.setValueAtTime(900, t); o.frequency.linearRampToValueAtTime(1500, t + 0.12); o.frequency.linearRampToValueAtTime(700, t + 0.35);
-        g.gain.setValueAtTime(0.03, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+        g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.03, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
         o.start(t); o.stop(t + 0.45);
         break;
       }
       case 'splash': {
         const n = c.createBufferSource(); n.buffer = this.noiseBuf;
         const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900;
-        n.connect(lp).connect(g); g.gain.setValueAtTime(0.2, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+        n.connect(lp).connect(g); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.2, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
         n.start(t); n.stop(t + 0.55);
         break;
       }

@@ -39,6 +39,29 @@ const GradeShader = {
     }`,
 };
 
+// Normales robustes : normaliser un vecteur nul donne NaN sur certains GPU
+// (Direct3D notamment) ; un seul pixel NaN, étalé par le halo, devient un
+// grand carré noir à l'écran
+THREE.ShaderChunk.normal_vertex = THREE.ShaderChunk.normal_vertex.replace(
+  'vNormal = normalize( transformedNormal );',
+  'vNormal = transformedNormal * inversesqrt( max( dot( transformedNormal, transformedNormal ), 1e-20 ) );');
+THREE.ShaderChunk.normal_fragment_begin = THREE.ShaderChunk.normal_fragment_begin.replace(
+  'vec3 normal = normalize( vNormal );',
+  'vec3 normal = dot( vNormal, vNormal ) > 1e-8 ? normalize( vNormal ) : vec3( 0.0, 0.0, 1.0 );');
+
+// Garde-fou avant le halo : pixels NaN/infinis remplacés, hautes lumières bornées
+const SanitizeShader = {
+  uniforms: { tDiffuse: { value: null } },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      if (any(isnan(c)) || any(isinf(c))) c = vec4(0.0, 0.0, 0.0, 1.0);
+      gl_FragColor = vec4(clamp(c.rgb, 0.0, 64.0), c.a);
+    }`,
+};
+
 export class RenderPipeline {
   constructor(renderer, scene, camera) {
     this.renderer = renderer;
@@ -77,6 +100,7 @@ export class RenderPipeline {
       this.ao = ao;
       c.addPass(ao);
     } else this.ao = null;
+    c.addPass(new ShaderPass(SanitizeShader));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.22, 0.45, 0.88);
     c.addPass(this.bloom);
     this.grade = new ShaderPass(GradeShader);

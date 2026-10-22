@@ -343,7 +343,12 @@ export class Terrain {
     g.setAttribute('aSand', new THREE.Float32BufferAttribute(sd, 1));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(ring.length * 4), 2));
     g.setIndex(idx);
-    g.computeVertexNormals();
+    // faces dans les deux sens : les normales calculées s'annuleraient (vecteur
+    // nul -> NaN sur certains GPU, puis carré noir étalé par le halo) ; on
+    // l'éclaire comme le sol
+    const nrm = new Float32Array(pos.length);
+    for (let i = 1; i < nrm.length; i += 3) nrm[i] = 1;
+    g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
     return new THREE.Mesh(g, this.mat);
   }
 }

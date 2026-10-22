@@ -328,6 +328,7 @@ window.__dev = {
   teleport(x, z) { player.teleport(x, z); },
   stats: () => ({ ...world.stats, calls: renderer.info.render.calls, tris: renderer.info.render.triangles }),
   bot: () => import('./dev/bot.js'),
+  gfx: { renderer, scene, camera, pipeline },
 };
 api.interaction = interaction;
 
