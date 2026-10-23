@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { fbm, smoothstep, clamp } from '../core/rng.js';
 import { coastDist, atlanticSide, fordFactor, WORLD } from './geo/shape.js';
 import { grassDetailTexture } from '../gfx/textures.js';
+import { fbm as fbmTex } from '../gfx/texgen.js';
 
 // Fenêtre du terrain (l'île réelle à l'échelle 1 unité ≈ 15 m, plus la côte
 // continentale de La Rochelle à l'est, au bout du pont)
@@ -220,14 +221,28 @@ function detailCanvas(size, draw) {
   return t;
 }
 function grassDetail() {
-  return detailCanvas(256, (ctx, S) => {
-    for (let i = 0; i < 5000; i++) {
-      const x = Math.random() * S, y = Math.random() * S, l = 2 + Math.random() * 5, v = 70 + Math.random() * 120;
-      ctx.strokeStyle = `rgb(${v},${v},${v})`;
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + (Math.random() - 0.5) * 2, y - l); ctx.stroke();
-    }
-  });
+  // brins serrés et touffes (grille raccordable), moyenne ≈ 0,5
+  const S = 256, c = document.createElement('canvas');
+  c.width = c.height = S;
+  const ctx = c.getContext('2d');
+  const clump = fbmTex(S, 8, 3, 41), fine = fbmTex(S, 64, 2, 43);
+  const img = ctx.createImageData(S, S);
+  for (let i = 0; i < S * S; i++) {
+    const v = 0.5 + (clump[i] - 0.5) * 0.6 + (fine[i] - 0.5) * 0.15;
+    img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = Math.max(0, Math.min(255, v * 255));
+    img.data[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  for (let i = 0; i < 5000; i++) {
+    const x = Math.random() * S, y = Math.random() * S, l = 2 + Math.random() * 6, v = 90 + Math.random() * 90;
+    ctx.strokeStyle = `rgba(${v},${v},${v},0.45)`;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + (Math.random() - 0.5) * 3, y - l); ctx.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 8;
+  return t;
 }
 function sandDetail() {
   return detailCanvas(256, (ctx, S) => {
@@ -267,11 +282,33 @@ export class Terrain {
         .replace('#include <common>', '#include <common>\nuniform sampler2D tGrass, tSand, tMacro;\nvarying float vSand;\nvarying vec3 vWPos;')
         .replace('#include <color_fragment>', `#include <color_fragment>
           vec2 wp = vWPos.xz;
-          float g = texture2D(tGrass, wp * 0.22).r * 0.55 + texture2D(tGrass, wp * 0.05).r * 0.45;
+          // deux échelles tournées l'une par rapport à l'autre : pas de répétition visible
+          vec2 wr = mat2(0.8, -0.6, 0.6, 0.8) * wp;
+          float g1 = texture2D(tGrass, wp * 0.35).r, g2 = texture2D(tGrass, wr * 0.09).r;
+          float g = g1 * 0.4 + g2 * 0.6;
           float sd = texture2D(tSand, wp * 0.09).r * 0.6 + texture2D(tSand, wp * 0.31).r * 0.4;
-          float mac = texture2D(tMacro, wp * 0.004).r * 0.55 + texture2D(tMacro, wp * 0.021).r * 0.45;
-          float det = (mix(g, sd, vSand) - 0.5) * 2.6 + 1.0;
-          diffuseColor.rgb *= det * (0.7 + 0.6 * mac);`);
+          float mac = texture2D(tMacro, wp * 0.004).r * 0.55 + texture2D(tMacro, wr * 0.021).r * 0.45;
+          float det = (mix(g, sd, vSand) - 0.5) * 1.3 + 1.0;
+          diffuseColor.rgb *= det * (0.75 + 0.5 * mac);
+          // prairie : plaques sèches et blondes, zones plus grasses et plus sombres
+          float dry = smoothstep(0.45, 0.75, texture2D(tMacro, wr * 0.011 + 0.3).r) * (1.0 - vSand);
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.18, 1.08, 0.72), dry * 0.55);
+          float lush = smoothstep(0.55, 0.8, texture2D(tMacro, wp * 0.017 + 0.7).r) * (1.0 - vSand);
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.82, 0.98, 0.8), lush * 0.5);
+          // petites fleurs des prés (de près seulement)
+          float fl = step(0.985, texture2D(tGrass, wr * 1.7 + 0.13).r) * (1.0 - vSand) * (1.0 - smoothstep(10.0, 30.0, length(vViewPosition)));
+          diffuseColor.rgb = mix(diffuseColor.rgb, mix(vec3(0.95, 0.92, 0.75), vec3(0.95, 0.8, 0.3), step(0.5, texture2D(tSand, wp * 3.1).r)), fl * 0.8);
+          float hgtT = mix(g2, sd, vSand);`)
+        .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+          {
+            // micro-relief : brins et grain du sable accrochent la lumière
+            vec3 sx = dFdx(-vViewPosition), sy = dFdy(-vViewPosition);
+            vec3 r1 = cross(sy, normal), r2 = cross(normal, sx);
+            float det2 = dot(sx, r1);
+            vec2 dh = vec2(dFdx(hgtT), dFdy(hgtT)) * 0.35;
+            vec3 grad = sign(det2) * (dh.x * r1 + dh.y * r2);
+            normal = normalize(abs(det2) * normal - grad);
+          }`);
     };
     this.mesh = new THREE.Mesh(geo, this.mat);
     this.mesh.receiveShadow = true;
@@ -442,10 +479,13 @@ export class Ocean {
           float shallowK = smoothstep(-5.0, -0.2, vGround);
           diffuseColor.rgb = mix(uDeep, uShallow, shallowK);
           // écume des vagues qui déferlent sur le rivage
-          float foamBand = smoothstep(-0.9, 0.1, vGround);
-          float ripple = 0.5 + 0.5 * sin(vGround * 9.0 - uTime * 2.2 + sin(vWorldXZ.x * 0.15) * 2.0);
-          float foam = foamBand * smoothstep(0.55, 0.95, ripple);
-          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95, 0.97, 0.96), foam * 0.8);
+          // frange d'écume douce et déchiquetée, seulement au bord de l'eau
+          float shore = smoothstep(-0.7, 0.05, vGround);
+          float nz = texture2D(normalMap, vWorldXZ * 0.045 + vec2(uTime * 0.006, uTime * 0.004)).r;
+          float nz2 = texture2D(normalMap, vWorldXZ * 0.13 - vec2(uTime * 0.01, 0.0)).g;
+          float wave = 0.5 + 0.5 * sin(vGround * 5.0 - uTime * 1.4 + nz * 5.0);
+          float foam = shore * smoothstep(0.6, 0.95, wave * (0.55 + 0.6 * nz2)) + smoothstep(-0.12, 0.05, vGround) * 0.5 * nz2;
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.93, 0.95, 0.94), clamp(foam, 0.0, 1.0) * 0.55);
           diffuseColor.a = mix(0.72, 0.94, 1.0 - shallowK * 0.6);`);
     };
     this.mesh = new THREE.Mesh(geo, mat);

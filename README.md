@@ -89,7 +89,15 @@ La lumière du jour entre par les fenêtres. Chaque intérieur contient un objet
 
 - Éclairage d'ambiance tiré du ciel : reflets sur l'eau, le verre et le métal.
 - Occlusion ambiante, halo des lumières, étalonnage des couleurs et anticrénelage.
-- Textures procédurales de pierre, d'enduit, de sable et d'herbe, avec cartes de normales.
+- Matériaux procéduraux avec relief réel (carte de hauteur → normales, rugosité, creux assombris) :
+  - pierres et joints de chaux, pierre de taille chanfreinée ;
+  - pavés bombés avec terre et herbe dans les joints, dallage romain ;
+  - tuiles canal galbées et ardoises ;
+  - enduit chaulé, planches veinées, terre battue.
+- Vieillissement du bâti : variations de teinte qui cassent la répétition, pied des murs humide.
+- Prairies aux plaques sèches et grasses, petites fleurs et microrelief.
+- Touffes d'herbe teintées comme le sol, houppiers en grappes de rameaux feuillus, pins parasols.
+- Herbes et feuillages bougent au vent, plus fort sous la pluie.
 
 La qualité (Échap → Options) règle ces effets. Elle baisse automatiquement si l'image devient trop lente.
 
@@ -109,7 +117,9 @@ On peut aussi dormir dans un lit, ou passer la nuit avec la touche `N`.
   Coupes : courte, raie sur le côté, frange romaine, carré, longue, queue de cheval, chignon, nattes, tonsure, perruque.
   Les vêtements ajustés (chemises, corsages, pantalons, culottes, bas, gants, souliers, bottes, vestes, fichus) sont gonflés depuis le corps, lissés et découpés en ourlets nets.
   Robes, jupes et pans d'habit enveloppent le bassin réel. Au loin, un niveau de détail allégé prend le relais.
-  Les animations sont procédurales (marche, course, gestes de métier), et chacun a son attitude au repos : bras ballants, poing sur la hanche, bras croisés ou mains jointes.
+  La marche et la course suivent les courbes de la biomécanique : attaque du talon, déroulé du pied, genou qui fléchit pendant que la jambe avance, rotation et bascule du bassin, buste en contre-rotation, bras qui balancent coudes fléchis.
+  La foulée est calée sur la longueur des jambes pour que les pieds ne glissent pas, et les mains sont détendues, doigts légèrement fléchis.
+  Les gestes de métier sont procéduraux, et chacun a son attitude au repos : bras ballants, poing sur la hanche, bras croisés ou mains jointes.
 - **Costumes d'époque** : peaux et parures néolithiques, tuniques, toges et
   pallas romaines, cottes, guimpes et scapulaires médiévaux, justaucorps,
   tricornes et rabats du Grand Siècle, quichenottes des saunières, redingotes

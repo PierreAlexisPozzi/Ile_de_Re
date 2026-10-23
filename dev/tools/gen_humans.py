@@ -167,6 +167,62 @@ def bone_tail(pos, bone):
     return joint(pos, SKEL['bones'][bone]['tail'])
 
 
+# ---------------------------------------------------------------------------
+#  Main détendue : doigts légèrement fléchis vers la paume (la pose de base
+#  de MakeHuman a les doigts tendus et écartés, d'où des mains « nageoires »)
+# ---------------------------------------------------------------------------
+CURL = {  # flexion (degrés) des articulations MCP, IPP, IPD de chaque doigt
+    2: (18, 28, 14), 3: (22, 32, 16), 4: (26, 36, 18), 5: (30, 40, 20),
+}
+THUMB = (8, 14, 14)
+
+
+def rot_about(axis, ang, center):
+    a = axis / np.linalg.norm(axis)
+    c, s_ = math.cos(ang), math.sin(ang)
+    K = np.array([[0, -a[2], a[1]], [a[2], 0, -a[0]], [-a[1], a[0], 0]])
+    R = np.eye(3) + s_ * K + (1 - c) * K @ K
+    M = np.eye(4)
+    M[:3, :3] = R
+    M[:3, 3] = center - R @ center
+    return M
+
+
+def relax_hands(pos):
+    out = pos.copy()
+    for side in ('L', 'R'):
+        W0 = bone_head(pos, 'wrist.' + side)
+        idx = bone_head(pos, 'finger2-1.' + side)
+        pk = bone_head(pos, 'finger5-1.' + side)
+        palm = np.cross(idx - W0, pk - W0)
+        palm /= np.linalg.norm(palm)
+        if side == 'L':
+            palm = -palm
+        mats = {}
+        chains = [(f, CURL[f]) for f in CURL] + [(1, THUMB)]
+        for f, angs in chains:
+            M = np.eye(4)
+            for k, ang in enumerate(angs, start=1):
+                b = f'finger{f}-{k}.{side}'
+                h, t = bone_head(pos, b), bone_tail(pos, b)
+                axis = np.cross(t - h, palm)
+                if np.linalg.norm(axis) < 1e-9:
+                    mats[b] = M
+                    continue
+                M = M @ rot_about(axis, math.radians(ang), h)
+                mats[b] = M
+        acc = np.zeros_like(pos)
+        wsum = np.zeros(len(pos))
+        for b, M in mats.items():
+            for vi, w in MHW.get(b, []):
+                p4 = np.append(pos[vi], 1.0)
+                acc[vi] += w * (M @ p4)[:3]
+                wsum[vi] += w
+        m = wsum > 0
+        out[m] = acc[m] + (1 - wsum[m])[:, None] * pos[m]
+    return out
+
+
 # nos os -> (os MakeHuman dont la tête donne le pivot)
 OUR_JOINTS = {
     'hips': 'root', 'spine': 'spine03', 'chest': 'spine01', 'neck': 'neck01', 'head': 'head',
@@ -556,7 +612,7 @@ def main():
     Q = 20000.0
     OY = np.array([0.0, 0.9, 0.0])   # origine décalée : ±1,6 m autour de 0,9 m tient en 16 bits
     for name, spec in VARIANTS.items():
-        pos = morph(**spec) * SCALE
+        pos = relax_hands(morph(**spec) * SCALE)
         foot = pos[sorted(GROUP_VERTS['body'])][:, 1].min()
         pos[:, 1] -= foot
         nrm_all = vertex_normals(pos, body_tris_base, NV)

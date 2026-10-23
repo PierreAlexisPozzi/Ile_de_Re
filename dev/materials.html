@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<title>Matériaux</title>
+<style>html,body{margin:0;height:100%;background:#7a8a98;overflow:hidden}canvas{display:block}#l{position:fixed;left:0;top:0;font:12px sans-serif;color:#fff;width:100%}</style>
+<script type="importmap">{ "imports": { "three": "../vendor/three.module.js" } }</script>
+</head>
+<body>
+<div id="l"></div>
+<script type="module">
+// Planche des matériaux du bâti : ?mats=stone,stoneOld,…&cols=4
+import * as THREE from 'three';
+import { MAT } from '../src/world/materials.js';
+
+const q = new URLSearchParams(location.search);
+const names = (q.get('mats') || 'stone,stoneOld,stonePale,rampart,whitewash,plasterOld,tiles,tilesOld,slate,pave,paveRoman,wood,dirt,thatch,concrete,sandPath').split(',');
+const cols = +(q.get('cols') || 4);
+const rows = Math.ceil(names.length / cols);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x7a8a98);
+scene.add(new THREE.HemisphereLight(0xcfe0f0, 0x6a5a40, 0.8));
+const sun = new THREE.DirectionalLight(0xfff0d8, 2.6);
+sun.position.set(-3, 2.2, 2);
+scene.add(sun);
+const S = 2;     // une plaque = 2 m (une répétition de texture sur les boîtes)
+const geo = new THREE.PlaneGeometry(S, S);
+names.forEach((n, k) => {
+  const m = new THREE.Mesh(geo, MAT[n]());
+  m.position.set((k % cols - (cols - 1) / 2) * (S + 0.1), -(Math.floor(k / cols) - (rows - 1) / 2) * (S + 0.1), 0);
+  scene.add(m);
+});
+const cam = new THREE.OrthographicCamera(-cols * 1.05, cols * 1.05, rows * 1.05, -rows * 1.05, 0.1, 50);
+cam.position.set(0, 0, 10);
+const aspect = innerWidth / innerHeight;
+const w = Math.max(cols * 1.05, rows * 1.05 * aspect);
+cam.left = -w; cam.right = w; cam.top = w / aspect; cam.bottom = -w / aspect;
+cam.updateProjectionMatrix();
+document.getElementById('l').textContent = names.join(' · ');
+renderer.render(scene, cam);
+window.__ready = true;
+</script>
+</body>
+</html>

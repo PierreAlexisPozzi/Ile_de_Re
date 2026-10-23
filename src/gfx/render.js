@@ -97,6 +97,16 @@ export class RenderPipeline {
       ao.blendIntensity = 0.85;
       ao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: 12 });
       ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
+      // le passage profondeur/normales de l'occlusion ignore la transparence découpée :
+      // feuilles, herbes et mèches y deviendraient des carrés pleins (halos gris)
+      const hideCards = ao.overrideVisibility.bind(ao);
+      ao.overrideVisibility = function () {
+        hideCards();
+        this.scene.traverse((o) => {
+          const m = o.material;
+          if (o.isMesh && o.visible && m && !Array.isArray(m) && (m.alphaTest > 0 || m.transparent)) o.visible = false;
+        });
+      };
       this.ao = ao;
       c.addPass(ao);
     } else this.ao = null;
