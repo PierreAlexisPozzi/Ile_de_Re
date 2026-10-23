@@ -1,4 +1,4 @@
-// Bibliothèque de costumes : coiffures, barbes, couvre-chefs, vêtements
+// Bibliothèque de costumes : couvre-chefs et coiffes, vêtements
 // superposés (jupes, pans d'habit, capes, tabliers, châles, scapulaires…),
 // chaussures et accessoires. Tout est construit en géométrie procédurale et
 // attaché aux articulations du squelette (voir rig.js) pour suivre l'animation.
@@ -22,7 +22,7 @@ export function geo(key, make) {
 }
 
 // Déformation de la sphère de tête : mâchoire affinée, menton, crâne.
-// Appliquée à la tête ET aux cheveux/barbes/bonnets pour qu'ils épousent la forme.
+// Appliquée aux coiffes et chapeaux, ajustés à la tête par le repère « headC ».
 export function deformHeadGeometry(g, r) {
   const p = g.attributes.position;
   for (let i = 0; i < p.count; i++) {
@@ -37,57 +37,6 @@ export function deformHeadGeometry(g, r) {
   }
   g.computeVertexNormals();
   return g;
-}
-
-// Relief du visage (repère de la sphère unité, avant = +z) : arcades, orbites,
-// nez, ailes du nez, pommettes, lèvres, menton. Les zones correspondent au
-// visage peint (yeux à y≈0.03, nez jusqu'à y≈-0.3, bouche à y≈-0.52).
-const G2 = (x, y, cx, cy, sx, sy) => Math.exp(-(((x - cx) / sx) ** 2 + ((y - cy) / sy) ** 2));
-export function faceRelief(x, y, z, o = {}) {
-  if (z <= 0.05) return 0;
-  const front = Math.min(1, (z - 0.05) / 0.35);
-  const male = o.sex !== 'f', child = o.age === 'child', old = o.age === 'old';
-  let d = 0;
-  // nez : arête qui part d'entre les yeux et s'avance jusqu'au bout du nez
-  const nk = child ? 0.65 : old ? 1.12 : male ? 1.0 : 0.85;
-  if (y < 0.12 && y > -0.36) {
-    const t = (0.12 - y) / 0.48;                                // 0 en haut, 1 sous le nez
-    const h = (t < 0.8 ? 0.02 + 0.15 * (t / 0.8) ** 1.4 : 0.17 * (1 - (t - 0.8) / 0.2) ** 0.7) * nk;
-    const w = 0.04 + 0.035 * t;
-    d += h * Math.exp(-((x / w) ** 2));
-  }
-  d += 0.055 * nk * (G2(x, y, 0.075, -0.25, 0.04, 0.035) + G2(x, y, -0.075, -0.25, 0.04, 0.035));   // ailes du nez
-  // orbites creusées et arcades sourcilières
-  d -= 0.05 * (G2(x, y, 0.31, 0.02, 0.11, 0.075) + G2(x, y, -0.31, 0.02, 0.11, 0.075));
-  d += (male ? 0.04 : 0.022) * (G2(x, y, 0.27, 0.17, 0.2, 0.055) + G2(x, y, -0.27, 0.17, 0.2, 0.055));
-  // pommettes, joues
-  d += 0.035 * (G2(x, y, 0.45, -0.13, 0.13, 0.1) + G2(x, y, -0.45, -0.13, 0.13, 0.1));
-  d += 0.03 * (G2(x, y, 0.42, -0.42, 0.16, 0.16) + G2(x, y, -0.42, -0.42, 0.16, 0.16));   // joues pleines
-  if (old) d -= 0.02 * (G2(x, y, 0.4, -0.38, 0.1, 0.1) + G2(x, y, -0.4, -0.38, 0.1, 0.1));
-  // sillon sous le nez, lèvres, pli de la bouche, menton
-  d += 0.03 * G2(x, y, 0, -0.475, 0.17, 0.035) + 0.034 * G2(x, y, 0, -0.565, 0.14, 0.04);
-  d -= 0.012 * G2(x, y, 0, -0.52, 0.14, 0.012);
-  d += (male ? 0.05 : 0.035) * G2(x, y, 0, -0.8, 0.24, 0.1);
-  return d * front;
-}
-
-export function sculptHeadGeometry(g, r, o = {}) {
-  const p = g.attributes.position;
-  for (let i = 0; i < p.count; i++) {
-    const x = p.getX(i) / r, y = p.getY(i) / r, z = p.getZ(i) / r;
-    const k = 1 + faceRelief(x, y, z, o);
-    p.setXYZ(i, x * k * r, y * k * r, z * k * r);
-  }
-  return deformHeadGeometry(g, r);
-}
-
-// Position (repère de la tête) d'un point du visage, pour y loger les yeux
-export function headPoint(x, y, o = {}) {
-  const z = Math.sqrt(Math.max(0, 1 - x * x - y * y));
-  const k = 1 + faceRelief(x, y, z, o);
-  let X = x * k, Y = y * k, Z = z * k;
-  if (Y < 0) { const t = -Y; X *= 1 - 0.17 * t * t - 0.08 * t ** 4; Z = Z * (1 - 0.08 * t) + 0.07 * t * t * Math.max(0, Z); }
-  return new THREE.Vector3(X * 0.8 * HEAD_R, Y * 1.1 * HEAD_R, Z * 0.97 * HEAD_R);
 }
 
 function headShell(key, r, phiStart, phiLength, thetaStart, thetaLength, segs = 22) {
@@ -111,181 +60,6 @@ export function dsMat(spec) {
     dsCache.set(base, m);
   }
   return dsCache.get(base);
-}
-
-// ======================================================================
-//  COIFFURES
-// ======================================================================
-export function buildHair(style, color, sex = 'm') {
-  const g = new THREE.Group();
-  if (!style || style === 'none' || style === 'bald') return g;
-  const R = HEAD_R;
-  const curly = style === 'wig' || style === 'curly' || style === 'messy';
-  const mat = clothMat({ c: color, p: curly ? 'wool' : 'linen', rough: 0.85 });
-
-  const cap = (r = 1.06, theta = 0.37) =>
-    mesh(headShell('cap', R * r, 0, PI * 2, 0, PI * theta), mat);
-  const back = (r = 1.06, w = 0.68, theta = 0.6) =>
-    mesh(headShell('back', R * r, BACK - PI * w, PI * w * 2, 0, PI * theta), mat);
-
-  switch (style) {
-    case 'short':
-    case 'sidepart':
-      g.add(cap(), back());
-      if (style === 'sidepart') {
-        const top = mesh(headShell('part', R * 1.1, FRONT - 0.9, 1.6, 0, PI * 0.22), mat);
-        top.position.set(0.006, 0.004, 0);
-        g.add(top);
-      }
-      break;
-    case 'crop':
-      g.add(cap(1.025, 0.36), back(1.025, 0.66, 0.58));
-      break;
-    case 'curly':
-      g.add(cap(1.12, 0.4), back(1.12, 0.7, 0.62));
-      break;
-    case 'tonsure': {
-      // couronne de cheveux, sommet rasé (moines)
-      g.add(mesh(headShell('tonsure', R * 1.05, 0, PI * 2, PI * 0.2, PI * 0.2), mat));
-      g.add(back(1.05, 0.62, 0.6));
-      break;
-    }
-    case 'fringe': {
-      // calvitie : couronne latérale et arrière seulement
-      g.add(mesh(headShell('fringe', R * 1.04, BACK - PI * 0.72, PI * 1.44, PI * 0.3, PI * 0.3), mat));
-      break;
-    }
-    case 'long':
-    case 'messy': {
-      g.add(cap(1.07), back(1.07, 0.7, 0.62));
-      const len = sex === 'f' ? 0.32 : 0.2;
-      const tail = mesh(geo(`longback-${len}`, () =>
-        new THREE.CylinderGeometry(0.083, 0.1, len, 16, 1, true, PI / 2 + 0.25, PI - 0.5)), dsMat({ c: color, p: 'linen' }));
-      tail.scale.set(1, 1, 0.95);
-      tail.position.set(0, -0.04 - len / 2, -0.005);
-      g.add(tail);
-      if (style === 'messy') {
-        for (let i = 0; i < 7; i++) {
-          const a = (i / 7) * PI * 2;
-          const lock = mesh(geo('lock', () => new THREE.SphereGeometry(0.028, 6, 5)), mat);
-          lock.position.set(Math.cos(a) * 0.075, 0.07 + Math.sin(i * 1.7) * 0.02, Math.sin(a) * 0.085 - 0.01);
-          lock.scale.set(1, 0.7, 1);
-          g.add(lock);
-        }
-      }
-      break;
-    }
-    case 'bun':
-    case 'topbun': {
-      g.add(cap(1.04, 0.38), back(1.04, 0.7, 0.6));
-      const bun = mesh(geo('bun', () => new THREE.SphereGeometry(0.042, 12, 10)), mat);
-      if (style === 'topbun') bun.position.set(0, 0.115, -0.03);
-      else bun.position.set(0, 0.035, -0.112);
-      g.add(bun);
-      break;
-    }
-    case 'ponytail': {
-      g.add(cap(1.05), back(1.05, 0.7, 0.58));
-      const tail = mesh(geo('ponytail', () => new THREE.CapsuleGeometry(0.024, 0.16, 4, 8)), mat);
-      tail.position.set(0, -0.05, -0.115);
-      tail.rotation.x = 0.25;
-      g.add(tail);
-      break;
-    }
-    case 'braids': {
-      g.add(cap(1.05), back(1.05, 0.7, 0.6));
-      for (const sx of [-1, 1]) {
-        const braid = mesh(geo('braid', () => new THREE.CapsuleGeometry(0.02, 0.26, 4, 8)), mat);
-        braid.position.set(sx * 0.07, -0.16, -0.01);
-        braid.rotation.z = sx * 0.12;
-        g.add(braid);
-      }
-      break;
-    }
-    case 'bob':
-    case 'rolls': {
-      g.add(cap(1.07), back(1.07, 0.78, 0.62));
-      const side = mesh(geo('bobside', () =>
-        new THREE.CylinderGeometry(0.088, 0.096, 0.13, 18, 1, true, PI / 2 - 0.5, PI + 1.0)), dsMat({ c: color, p: 'linen' }));
-      side.position.set(0, -0.06, -0.004);
-      side.scale.set(1, 1, 1.02);
-      g.add(side);
-      if (style === 'rolls') {
-        for (const sx of [-1, 1]) {
-          const roll = mesh(geo('roll', () => new THREE.TorusGeometry(0.026, 0.017, 8, 14)), mat);
-          roll.position.set(sx * 0.045, 0.1, 0.03);
-          roll.rotation.y = PI / 2;
-          g.add(roll);
-        }
-      }
-      break;
-    }
-    case 'wig': {
-      // perruque in-folio (années 1680) : volume bouclé tombant sur les épaules
-      g.add(cap(1.14, 0.42), back(1.14, 0.75, 0.6));
-      for (const sx of [-1, 1]) {
-        const mass = mesh(geo('wigside', () => new THREE.SphereGeometry(0.06, 12, 10)), mat);
-        mass.scale.set(0.75, 2.2, 0.95);
-        mass.position.set(sx * 0.09, -0.11, -0.015);
-        g.add(mass);
-      }
-      const backMass = mesh(geo('wigback', () => new THREE.SphereGeometry(0.08, 12, 10)), mat);
-      backMass.scale.set(1.15, 1.6, 0.7);
-      backMass.position.set(0, -0.09, -0.08);
-      g.add(backMass);
-      break;
-    }
-    default:
-      g.add(cap(), back());
-  }
-  return g;
-}
-
-// ======================================================================
-//  BARBES ET MOUSTACHES
-// ======================================================================
-export function buildBeard(style, color) {
-  const g = new THREE.Group();
-  if (!style || style === 'none' || style === 'stubble') return g;
-  const mat = clothMat({ c: color, p: 'wool', rough: 0.9 });
-  const R = HEAD_R;
-  const mustache = (w = 0.026, drop = 0) => {
-    for (const sx of [-1, 1]) {
-      // moustache : mèche aplatie qui épouse la lèvre supérieure
-      const m = mesh(geo('stache3', () => new THREE.SphereGeometry(0.01, 12, 8)), mat);
-      m.position.set(sx * 0.0155, -0.0505 - drop * 0.4, 0.0925);
-      m.rotation.z = -sx * (0.22 + drop * 2.2);
-      m.rotation.y = sx * 0.45;
-      m.scale.set(1.75 * (w / 0.026), 0.62, 0.55);
-      g.add(m);
-    }
-  };
-  switch (style) {
-    case 'full':
-      g.add(mesh(headShell('beardfull', R * 1.07, FRONT - PI * 0.47, PI * 0.94, PI * 0.56, PI * 0.38), mat));
-      mustache(0.03);
-      break;
-    case 'short':
-      g.add(mesh(headShell('beardshort', R * 1.03, FRONT - PI * 0.45, PI * 0.9, PI * 0.6, PI * 0.3), mat));
-      mustache(0.026);
-      break;
-    case 'goatee': {
-      const gt = mesh(geo('goatee', () => new THREE.CapsuleGeometry(0.014, 0.025, 4, 6)), mat);
-      gt.position.set(0, -0.098, 0.074);
-      gt.rotation.x = 0.4;
-      g.add(gt);
-      mustache(0.022);
-      break;
-    }
-    case 'mustache':
-      mustache(0.026);
-      break;
-    case 'gaulish':
-      // longues moustaches tombantes des Gaulois
-      mustache(0.05, 0.25);
-      break;
-  }
-  return g;
 }
 
 // ======================================================================

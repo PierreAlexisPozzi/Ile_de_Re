@@ -12,12 +12,14 @@
 import * as THREE from 'three';
 import { buildCharacter } from '../src/characters/rig.js';
 import { look, ARCHETYPES } from '../src/characters/wardrobe.js';
+import { loadHumans } from '../src/characters/human.js';
+await loadHumans('../assets/humans/');
 
 const params = new URLSearchParams(location.search);
 const era = params.get('era') || 'xix';
 const action = params.get('action') || 'idle';
 const zoom = parseFloat(params.get('zoom') || '1');
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -44,6 +46,7 @@ names.forEach((n, i) => {
   c.setAction(action);
   scene.add(c.group);
   chars.push(c);
+  window.__chars = chars;
 });
 door.position.set(-((names.length + 1) / 2) * 0.9, 1.025, -0.3);
 scene.add(door);
@@ -56,7 +59,7 @@ if (params.get('close')) { const k = parseInt(params.get('close')); cam.position
 let last = performance.now();
 const speed = parseFloat(params.get('speed') || '0');
 function loop(t) {
-  const dt = Math.min(0.05, (t - last) / 1000); last = t;
+  const dt = Math.max(0, Math.min(0.05, (t - last) / 1000)); last = t;
   for (const c of chars) { c.speed = speed; c.update(dt); }
   renderer.render(scene, cam);
   requestAnimationFrame(loop);

@@ -698,6 +698,8 @@ export class TownBuilder {
   //  SOLS : rues, places, chemins
   // ======================================================================
   street(pts, width, mat, lift = 0.06) {
+    // tracé en coordonnées monde, pour raccorder les routes de l'île
+    (this.streetLines ??= []).push({ pts: pts.map(([x, z]) => this.W(x, z)), width });
     const samples = [];
     // densifie la polyligne pour épouser le terrain
     for (let i = 0; i < pts.length - 1; i++) {

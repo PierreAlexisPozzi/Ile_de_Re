@@ -22,6 +22,7 @@ import { Cinematic } from './systems/cinematic.js';
 import { UI } from './ui/ui.js';
 import { api } from './systems/api.js';
 import { loadFonts } from './gfx/signs.js';
+import { loadHumans } from './characters/human.js';
 import { getEra } from './story/eras.js';
 import { ERA_HOOKS } from './story/registry.js';
 import { look } from './characters/wardrobe.js';
@@ -67,6 +68,9 @@ addEventListener('resize', resize);
 resize();
 
 // ---------- Systèmes ----------
+// les corps des personnages (MakeHuman) doivent être chargés avant de créer le joueur
+$('#loading-hint').textContent = 'Les habitants se préparent…';
+await loadHumans();
 const world = new World(scene);
 const player = new Player(scene, camera);
 const npcs = new NPCManager(scene);
@@ -249,7 +253,7 @@ let saveT = 0;
 let titleT = 0;
 function loop(now) {
   requestAnimationFrame(loop);
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
   last = now;
   const t = now / 1000;
   if (!dayNight) { renderer.render(scene, camera); endFrame(); return; }
@@ -309,7 +313,7 @@ async function boot() {
     await new Promise((r) => setTimeout(r, 30));
     await fn();
   };
-  await step('Chargement des polices d\'époque…', 10, () => loadFonts());
+  await step('Chargement des polices d\'époque et des habitants…', 10, () => Promise.all([loadFonts(), loadHumans()]));
   await step("Relevé de la côte et des marais…", 30, () => { world.build(); pipeline.setSky(world.sky.mesh.material); });
   await step('Allumage du phare…', 55, () => { dayNight = new DayNight(scene, world); api.dayNight = dayNight; applyQuality(); });
   await step('Les habitants se réveillent…', 80, () => travel('contemporaine', { silent: true, force: true }));
