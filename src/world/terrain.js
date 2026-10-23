@@ -36,7 +36,9 @@ export function marshMask(x, z) {
     ell(x, z, -240, -130, 95, 55),          // Loix
     ell(x, z, -300, -40, 95, 26),           // le Martray, La Couarde
     ell(x, z, -80, -50, 70, 20),            // fond de la Fosse de Loix
-  ) * (1 - smoothstep(0.35, 0.8, atlanticSide(x, z)) * 0.6);
+  ) * (1 - smoothstep(0.35, 0.8, atlanticSide(x, z)) * 0.6)
+    // les bourgs sont bâtis sur de petites éminences sèches au milieu des marais
+    * (1 - Math.max(ell(x, z, -180, -168, 40, 30), ell(x, z, -694, -192, 30, 26)));
 }
 // Vignobles : La Couarde, Le Bois-Plage, Saint-Martin, La Flotte, Sainte-Marie
 export function vineMask(x, z) {

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<title>Personnage seul</title>
+<style>html,body{margin:0;height:100%;background:#8a9aa8;overflow:hidden}canvas{display:block}</style>
+<script type="importmap">{ "imports": { "three": "../vendor/three.module.js" } }</script>
+</head>
+<body>
+<script type="module">
+// Banc d'essai d'un personnage : ?era=xix&who=mayor&cam=face|body|back|side&anim=0&action=idle
+import * as THREE from 'three';
+import { buildCharacter } from '../src/characters/rig.js';
+import { look, ARCHETYPES } from '../src/characters/wardrobe.js';
+import { loadHumans } from '../src/characters/human.js';
+await loadHumans('../assets/humans/');
+
+const q = new URLSearchParams(location.search);
+const era = q.get('era') || 'xix';
+const who = q.get('who') || ARCHETYPES[era][0];
+const camMode = q.get('cam') || 'body';
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x8a9aa8);
+scene.add(new THREE.HemisphereLight(0xdde8f0, 0x6a5a40, 1.0));
+const sun = new THREE.DirectionalLight(0xfff0d8, 2.4);
+sun.position.set(2, 5, 4); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -2; sun.shadow.camera.right = 2; sun.shadow.camera.top = 2.5; sun.shadow.camera.bottom = -0.5; sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.01;
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0xc8d8ff, 0.6);
+fill.position.set(-3, 2, 2);
+scene.add(fill);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), new THREE.MeshStandardMaterial({ color: 0xa89878 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+const spec = q.get('spec') ? JSON.parse(q.get('spec')) : look(era, who, { id: who, action: q.get('action') || 'idle' });
+if (q.get('nohat')) delete spec.hat;
+if (q.get('nobeard')) delete spec.beard;
+if (q.get('hair')) spec.hair = { ...(spec.hair || {}), style: q.get('hair') };
+const c = buildCharacter(spec);
+c.setAction(q.get('action') || 'idle');
+c.group.rotation.y = parseFloat(q.get('rot') || '0');
+scene.add(c.group);
+window.__char = c;
+if (q.get('lod')) c.setLOD(+q.get('lod'));
+if (q.get('hairdebug')) c.j.head.traverse((o) => { if (o.isMesh && o.material.alphaTest) o.material = new THREE.MeshBasicMaterial({ color: o.material.alphaTest > 0.4 ? 0xff0000 : 0x00ff00, side: THREE.DoubleSide, wireframe: q.get('hairdebug') === 'w' }); });
+const cam = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.05, 50);
+const eyeY = c.eyeHeight * c.scale;
+const views = {
+  body: [[0, 1.0, 4.2], [0, 0.9, 0]],
+  face: [[0, eyeY, 0.62], [0, eyeY - 0.02, 0]],
+  face34: [[0.38, eyeY + 0.02, 0.5], [0, eyeY - 0.02, 0]],
+  back: [[0, 1.1, -4.2], [0, 0.9, 0]],
+  side: [[4.2, 1.0, 0], [0, 0.9, 0]],
+  bust: [[0.3, eyeY - 0.1, 1.4], [0, eyeY - 0.25, 0]],
+  top: [[0, eyeY + 0.6, 0.25], [0, eyeY + 0.05, 0]],
+  feet: [[0.4, 0.35, 1.2], [0, 0.1, 0]],
+};
+const [p, t] = views[camMode] || views.body;
+cam.position.set(...p); cam.lookAt(...t);
+let last = performance.now();
+const anim = q.get('anim') !== '0';
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (anim) c.update(dt);
+  renderer.render(scene, cam);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
