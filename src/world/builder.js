@@ -1035,9 +1035,9 @@ export class TownBuilder {
       cl.position.set(Math.cos(a) * 0.7 * s, (trunkH + (kind === 'pine' ? 0.6 : 0.8)) * s + (i % 2) * 0.4 * s, Math.sin(a) * 0.7 * s);
       cl.scale.set(r, r * (kind === 'pine' ? 0.5 : 0.8), r);
       const core = new THREE.Mesh(lumpyGeometry(7 + i, 1, 0.24), lm);
-      core.scale.setScalar(0.66);
+      core.scale.setScalar(0.45);
       cl.add(core);
-      cl.add(new THREE.Mesh(leafCardsGeometry(10, 5 + i), cardMat));
+      cl.add(new THREE.Mesh(leafCardsGeometry(26, 5 + i), cardMat));
       g.add(cl);
     }
     this.put(g, x, z, { col: 0.35 * s });

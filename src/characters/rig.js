@@ -167,6 +167,10 @@ export class Character {
     G(j.head, headC.clone().sub(JW('head')), 'headC');
     j.headC.scale.setScalar(kHead);
     this.hipBase = v.J.hips[1];
+    // segments de jambe (repère du corps, avant mise à l'échelle) pour la marche
+    this.legL1 = len('kneeL', 'legL');
+    this.legL2 = len('ankleL', 'kneeL');
+    this.legLen = v.J.legL[1];
     this.eyeHeight = eyeC.y;
 
     // pose de repos du maillage : bras en A, avant-bras vers l'avant, jambes écartées

@@ -727,7 +727,9 @@ export function buildBag(type, c = 0x6b5536) {
   const g = new THREE.Group();
   const leather = clothMat({ c, p: type === 'backpack' ? 'plain' : 'leather' });
   if (type === 'backpack') {
-    const body = mesh(geo('backpack', () => new THREE.BoxGeometry(0.3, 0.4, 0.16)), leather, true);
+    // sac en toile arrondi (capsule aplatie)
+    const body = mesh(geo('backpack2', () => new THREE.CapsuleGeometry(0.13, 0.18, 6, 14)), clothMat({ c, p: 'linen' }), true);
+    body.scale.set(1.12, 1, 0.62);
     body.position.set(0, 0.22, -0.17);
     const flap = mesh(geo('bpflap', () => new THREE.BoxGeometry(0.31, 0.14, 0.05)), clothMat({ c: 0x4a3a28 }));
     flap.position.set(0, 0.37, -0.22);

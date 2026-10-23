@@ -3,6 +3,7 @@
 // Toutes les textures sont mises en cache et configurées pour se répéter.
 
 import * as THREE from 'three';
+import * as G from './texgen.js';
 
 const cache = new Map();
 
@@ -73,6 +74,7 @@ function tileFbm(size, basePeriod, octaves, seed) {
 
 // Carte de normales calculée à partir de la luminance de la texture (Sobel)
 export function normalOf(tex, strength = 2) {
+  if (tex.userData.height) return G.normalFromHeight(tex, strength);
   const key = 'n' + strength;
   if (tex.userData[key]) return tex.userData[key];
   const src = tex.image;
@@ -123,48 +125,10 @@ export function bumpOf(tex) {
 }
 
 // ---- Pierre de taille (moellons + joints de mortier) ----
-export function stoneTexture(base = 0xcabfa6, repeat = 1, mossy = false) {
-  const key = `stone-${base}-${repeat}-${mossy}`;
+export function stoneTexture(base = 0xcabfa6, repeat = 1, mossy = false, style = 'rubble') {
+  const key = `stone-${base}-${repeat}-${mossy}-${style}`;
   if (cache.has(key)) return cache.get(key);
-  const size = 512, c = canvas(size), ctx = c.getContext('2d');
-  ctx.fillStyle = lerpColor(base, 0x4a443c, 0.45); // mortier en retrait
-  ctx.fillRect(0, 0, size, size);
-  // assises de moellons de hauteurs inégales
-  let y = 0;
-  while (y < size) {
-    let rh = 46 + Math.random() * 34;
-    if (size - y < rh + 24) rh = size - y;           // la dernière assise remplit le reste
-    let x = -Math.random() * 60;
-    while (x < size) {
-      const cw = 60 + Math.random() * 70;
-      const stone = lerpColor(base, Math.random() > 0.5 ? 0xffffff : 0x3a342c, Math.random() * 0.22);
-      ctx.fillStyle = stone;
-      const sw = cw - 6 - Math.random() * 4, sh = rh - 6 - Math.random() * 3;
-      roundRect(ctx, x + 3, y + 3, sw, sh, 5 + Math.random() * 6);
-      ctx.fill();
-      // arête éclairée en haut, ombrée en bas
-      ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(x + 6, y + 4, cw - 14, 3);
-      ctx.fillStyle = 'rgba(0,0,0,0.16)'; ctx.fillRect(x + 6, y + rh - 8, cw - 14, 3);
-      x += cw;
-    }
-    y += rh;
-  }
-  // patine : altération et salissures douces, mousse discrète au pied du mur
-  const img = ctx.getImageData(0, 0, size, size);
-  const wear = tileFbm(size, 4, 4, base & 255);
-  const moss = mossy ? tileFbm(size, 6, 3, 31) : null;
-  for (let i = 0; i < size * size; i++) {
-    const p = i * 4, yy = Math.floor(i / size) / size;
-    const k = 0.86 + wear[i] * 0.26 + (Math.random() - 0.5) * 0.08;
-    let r = img.data[p] * k, g = img.data[p + 1] * k, b = img.data[p + 2] * k;
-    if (moss) {
-      const m = Math.max(0, moss[i] - 0.58) * 2.4 * (0.35 + 0.65 * yy);
-      r = r * (1 - m * 0.45) + 70 * m * 0.45; g = g * (1 - m * 0.35) + 95 * m * 0.35; b = b * (1 - m * 0.5) + 55 * m * 0.5;
-    }
-    img.data[p] = Math.min(255, r); img.data[p + 1] = Math.min(255, g); img.data[p + 2] = Math.min(255, b);
-  }
-  ctx.putImageData(img, 0, 0);
-  const tex = finalize(c, repeat);
+  const tex = style === 'ashlar' ? G.ashlarTexture(base, repeat, base & 255) : G.rubbleTexture(base, repeat, mossy, base & 255);
   cache.set(key, tex);
   return tex;
 }
@@ -173,33 +137,7 @@ export function stoneTexture(base = 0xcabfa6, repeat = 1, mossy = false) {
 export function plasterTexture(base = 0xeee6d2, repeat = 1) {
   const key = `plaster-${base}-${repeat}`;
   if (cache.has(key)) return cache.get(key);
-  const size = 512, c = canvas(size), ctx = c.getContext('2d');
-  const img = ctx.createImageData(size, size);
-  const r0 = (base >> 16) & 255, g0 = (base >> 8) & 255, b0 = base & 255;
-  // enduit à la chaux : marbrures douces, salissures, grain fin, coulures de pluie
-  const mottle = tileFbm(size, 4, 4, base & 255);
-  const dirt = tileFbm(size, 3, 3, (base >> 8) & 255 + 7);
-  const grain = tileNoise(size, 128, 3);
-  const streak = new Float32Array(size);
-  for (let x = 0; x < size; x++) streak[x] = Math.random() < 0.035 ? 0.4 + Math.random() * 0.6 : 0;
-  for (let x = 1; x < size - 1; x++) streak[x] = Math.max(streak[x], (streak[x - 1] + streak[x + 1]) * 0.35);
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const i = y * size + x;
-      let k = 0.94 + (mottle[i] - 0.5) * 0.14 + (grain[i] - 0.5) * 0.06;
-      const st = dirt[i] > 0.6 ? (dirt[i] - 0.6) * 1.2 : 0;
-      const rain = streak[x] * (0.06 + 0.06 * (y / size)) * (0.6 + 0.4 * mottle[i]);
-      const damp = y > size * 0.78 ? ((y - size * 0.78) / (size * 0.22)) ** 1.5 * 0.22 : 0;
-      k -= rain + damp * 0.6;
-      const p = i * 4;
-      img.data[p] = Math.min(255, r0 * k - st * 40 - damp * 25);
-      img.data[p + 1] = Math.min(255, g0 * k - st * 38 - damp * 15);
-      img.data[p + 2] = Math.min(255, b0 * k - st * 46 - damp * 30);
-      img.data[p + 3] = 255;
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-  const tex = finalize(c, repeat);
+  const tex = G.roughcastTexture(base, repeat, base & 255);
   cache.set(key, tex);
   return tex;
 }
@@ -208,41 +146,9 @@ export function plasterTexture(base = 0xeee6d2, repeat = 1) {
 export function roofTexture(base = 0xb35a3a, repeat = 1, mossy = true) {
   const key = `roof-${base}-${repeat}-${mossy}`;
   if (cache.has(key)) return cache.get(key);
-  const size = 256, c = canvas(size), ctx = c.getContext('2d');
-  ctx.fillStyle = lerpColor(base, 0x000000, 0.25);
-  ctx.fillRect(0, 0, size, size);
-  const rows = 8, rh = size / rows;
-  const tilesPerRow = 9, tw = size / tilesPerRow;
-  for (let r = 0; r < rows; r++) {
-    const y = r * rh;
-    const offset = (r % 2) * (tw / 2);
-    for (let t = -1; t <= tilesPerRow; t++) {
-      const x = t * tw + offset;
-      const shade = lerpColor(base, Math.random() > 0.5 ? 0xffaa77 : 0x7a3a26, Math.random() * 0.35);
-      ctx.fillStyle = shade;
-      ctx.beginPath();
-      // tuile demi-cylindre vue de dessus : arrondi en bas
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + tw, y);
-      ctx.lineTo(x + tw, y + rh * 0.7);
-      ctx.quadraticCurveTo(x + tw / 2, y + rh * 1.15, x, y + rh * 0.7);
-      ctx.closePath();
-      ctx.fill();
-      // ombre de chevauchement
-      ctx.fillStyle = 'rgba(0,0,0,0.18)';
-      ctx.fillRect(x, y + rh * 0.62, tw, 2);
-    }
-  }
-  if (mossy) {
-    ctx.fillStyle = 'rgba(80,105,60,0.45)';
-    for (let i = 0; i < 35; i++) {
-      ctx.beginPath();
-      ctx.arc(Math.random() * size, Math.random() * size, 3 + Math.random() * 7, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-  noiseOverlay(ctx, size, 0.1);
-  const tex = finalize(c, repeat);
+  // ardoise si la teinte est grise, sinon tuiles canal
+  const r = (base >> 16) & 255, b = base & 255;
+  const tex = Math.abs(r - b) < 30 ? G.slateTexture(base, repeat) : G.canalTileTexture(base, repeat, mossy, base & 255);
   cache.set(key, tex);
   return tex;
 }
@@ -272,44 +178,16 @@ export function thatchTexture(repeat = 1) {
 export function woodTexture(base = 0x6a4a2a, repeat = 1) {
   const key = `wood-${base}-${repeat}`;
   if (cache.has(key)) return cache.get(key);
-  const size = 256, c = canvas(size), ctx = c.getContext('2d');
-  ctx.fillStyle = lerpColor(base, 0xffffff, 0.05);
-  ctx.fillRect(0, 0, size, size);
-  for (let i = 0; i < 30; i++) {
-    ctx.strokeStyle = lerpColor(base, 0x000000, 0.2 + Math.random() * 0.2);
-    ctx.lineWidth = 1 + Math.random() * 2;
-    ctx.beginPath();
-    const y = Math.random() * size;
-    ctx.moveTo(0, y);
-    ctx.bezierCurveTo(size * 0.3, y + (Math.random() - 0.5) * 12, size * 0.7, y + (Math.random() - 0.5) * 12, size, y);
-    ctx.stroke();
-  }
-  noiseOverlay(ctx, size, 0.08);
-  const tex = finalize(c, repeat);
+  const tex = G.plankTexture(base, repeat, base & 255);
   cache.set(key, tex);
   return tex;
 }
 
 // ---- Pavés / chemins pavés ----
-export function paveTexture(base = 0x8a8276, repeat = 1) {
-  const key = `pave-${base}-${repeat}`;
+export function paveTexture(base = 0x8a8276, repeat = 1, style = 'setts') {
+  const key = `pave-${base}-${repeat}-${style}`;
   if (cache.has(key)) return cache.get(key);
-  const size = 256, c = canvas(size), ctx = c.getContext('2d');
-  ctx.fillStyle = lerpColor(base, 0x000000, 0.3);
-  ctx.fillRect(0, 0, size, size);
-  const n = 6, cw = size / n;
-  for (let r = 0; r < n; r++) {
-    const offset = (r % 2) * (cw / 2);
-    for (let cI = -1; cI <= n; cI++) {
-      const x = cI * cw + offset + 2 + Math.random() * 2;
-      const y = r * cw + 2 + Math.random() * 2;
-      ctx.fillStyle = lerpColor(base, Math.random() > 0.5 ? 0xffffff : 0x000000, Math.random() * 0.22);
-      roundRect(ctx, x, y, cw - 4, cw - 4, 4);
-      ctx.fill();
-    }
-  }
-  noiseOverlay(ctx, size, 0.14);
-  const tex = finalize(c, repeat);
+  const tex = style === 'flags' ? G.flagTexture(base, repeat, base & 255) : G.settsTexture(base, repeat, base & 255);
   cache.set(key, tex);
   return tex;
 }
@@ -318,26 +196,7 @@ export function paveTexture(base = 0x8a8276, repeat = 1) {
 export function dirtTexture(base = 0x9a7a52, repeat = 1) {
   const key = `dirt-${base}-${repeat}`;
   if (cache.has(key)) return cache.get(key);
-  const size = 256, c = canvas(size), ctx = c.getContext('2d');
-  ctx.fillStyle = lerpColor(base, 0x000000, 0.05);
-  ctx.fillRect(0, 0, size, size);
-  for (let i = 0; i < 400; i++) {
-    ctx.fillStyle = lerpColor(base, Math.random() > 0.5 ? 0xc8a878 : 0x5a4428, Math.random() * 0.4);
-    ctx.beginPath();
-    ctx.arc(Math.random() * size, Math.random() * size, 1 + Math.random() * 4, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  // ornières
-  for (let i = 0; i < 2; i++) {
-    ctx.strokeStyle = 'rgba(60,45,30,0.3)';
-    ctx.lineWidth = 8;
-    ctx.beginPath();
-    const x = size * (0.3 + i * 0.4);
-    ctx.moveTo(x, 0); ctx.lineTo(x + (Math.random() - 0.5) * 30, size);
-    ctx.stroke();
-  }
-  noiseOverlay(ctx, size, 0.12);
-  const tex = finalize(c, repeat);
+  const tex = G.earthTexture(base, repeat, base & 255);
   cache.set(key, tex);
   return tex;
 }

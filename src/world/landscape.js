@@ -9,7 +9,7 @@
 //  - aujourd'hui : pistes cyclables, bunkers basculés, pont vers le continent.
 
 import * as THREE from 'three';
-import { heightAt, marshMask, vineMask, forestMask, coastDist, atlanticSide } from './terrain.js';
+import { heightAt, marshMask, vineMask, forestMask, coastDist, atlanticSide, terrainColor } from './terrain.js';
 import { MAT, flat, texturedMat, shutterMat } from './materials.js';
 import { foliageTexture, barkTexture } from '../gfx/textures.js';
 import { leafCardTexture, grassTuftTexture, leafCardsGeometry, lumpyGeometry, tuftGeometry, cardMaterial } from '../gfx/foliage.js';
@@ -282,14 +282,26 @@ function vegetation({ world, era, group, rng, o, nearTown, pl, occ }) {
       const lean = (rng() - 0.5) * 0.18;
       const th = (6 + rng() * 4) * s;
       pineTrunks.push(compose(x, h + th / 2, z, s, th / 6, s, rng() * PI, lean, lean * 0.5));
-      pineCrowns.push(compose(x + lean * th * 0.5, h + th + 0.3, z, 2.6 * s, 1.0 * s, 2.6 * s, rng() * PI));
-      pineCrowns.push(compose(x + lean * th * 0.5 + (rng() - 0.5) * 1.6, h + th - 0.4, z + (rng() - 0.5) * 1.6, 1.9 * s, 0.8 * s, 1.9 * s, rng() * PI));
+      // couronne en parasol irrégulier : plusieurs plateaux de pinceaux d'aiguilles
+      const cx = x + lean * th * 0.5;
+      const nCl = 4 + Math.floor(rng() * 3);
+      for (let k = 0; k < nCl; k++) {
+        const a = rng() * PI * 2, r = (k === 0 ? 0 : 1.2 + rng() * 1.4) * s;
+        const sc = (k === 0 ? 1.7 : 1.1 + rng() * 0.6) * s;
+        pineCrowns.push(compose(cx + Math.cos(a) * r, h + th + (rng() - 0.6) * 1.1 * s, z + Math.sin(a) * r, sc, sc * (0.45 + rng() * 0.2), sc, rng() * PI));
+      }
     } else {
       const th = (look.trees === 'oak' ? 3 : 3.6) * s;
       trunks.push(compose(x, h + th / 2, z, s * 1.2, th / 3, s * 1.2, rng() * PI));
       const cr = look.trees === 'oak' ? 2.6 : 2.0;
-      crowns.push(compose(x, h + th + cr * 0.55 * s, z, cr * s, cr * 0.8 * s, cr * s, rng() * PI));
-      crowns.push(compose(x + (rng() - 0.5) * 2 * s, h + th + cr * 0.3 * s, z + (rng() - 0.5) * 2 * s, cr * 0.75 * s, cr * 0.6 * s, cr * 0.75 * s, rng() * PI));
+      // houppier irrégulier : grappes de tailles diverses autour du sommet du fût
+      crowns.push(compose(x, h + th + cr * 0.55 * s, z, cr * 0.8 * s, cr * 0.7 * s, cr * 0.8 * s, rng() * PI));
+      const nCl = 3 + Math.floor(rng() * 3);
+      for (let k = 0; k < nCl; k++) {
+        const a = rng() * PI * 2, r = cr * (0.45 + rng() * 0.45) * s;
+        const sc = cr * (0.45 + rng() * 0.3) * s;
+        crowns.push(compose(x + Math.cos(a) * r, h + th + cr * (0.2 + rng() * 0.8) * s, z + Math.sin(a) * r, sc, sc * 0.85, sc, rng() * PI));
+      }
     }
     world.addCollider(x, z, 0.45 * s);
   }
@@ -306,9 +318,13 @@ function vegetation({ world, era, group, rng, o, nearTown, pl, occ }) {
     if (atl > 0.45 && d < 30) {
       if (rng() < 0.6) oyats.push(compose(x, h - 0.05, z, 0.9 + rng() * 0.6, 0.8 + rng() * 0.6, 0.9 + rng() * 0.6, rng() * PI));
       else if (rng() < 0.35) gorse.push(compose(x, h + 0.35 * s, z, s, s * 0.7, s));
-      else if (rng() < 0.3 && o >= 2) tamarisk.push(compose(x, h + 1.4 * s, z, 1.4 * s, 1.1 * s, 1.4 * s, rng() * PI));
+      else if (rng() < 0.3 && o >= 2) {
+        // tamaris : petit arbre au tronc court et penché
+        tamarisk.push(compose(x, h + 1.5 * s, z, 1.4 * s, 1.1 * s, 1.4 * s, rng() * PI));
+        trunks.push(compose(x, h + 0.55 * s, z, 0.55 * s, 0.4 * s, 0.55 * s, rng() * PI, (rng() - 0.5) * 0.3, (rng() - 0.5) * 0.3));
+      }
     } else if (marshMask(x, z) > 0.45 || (d < 8 && atl < 0.4)) {
-      if (rng() < 0.5) salicorne.push(compose(x, h + 0.12, z, 0.5 + rng() * 0.4, 0.25, 0.5 + rng() * 0.4, rng() * PI));
+      if (rng() < 0.5) salicorne.push(compose(x, h - 0.03, z, 0.45 + rng() * 0.3, 0.3 + rng() * 0.15, 0.45 + rng() * 0.3, rng() * PI));
       else reeds.push(compose(x, h - 0.05, z, 0.7, 1.5 + rng() * 0.8, 0.7, rng() * PI));
     } else if (rng() < 0.25) {
       bushes.push(compose(x, h + 0.45 * s, z, s, s * 0.75, s, rng() * PI));
@@ -328,25 +344,39 @@ function vegetation({ world, era, group, rng, o, nearTown, pl, occ }) {
   bushy(group, bushes, texturedMat('bush', foliageTexture(0x34501f, 1)), leafCardTexture(0x4a6a32, 'broad'), 'bush', 7);
   bushy(group, gorse, texturedMat('gorse', foliageTexture(0x4a5a1a, 1)), leafCardTexture(0x9a9020, 'needle'), 'gorse', 8);
   // oyats, roseaux et salicornes : touffes croisées
-  tufts(group, oyats, grassTuftTexture(0xa8ac70), 'oyat');
-  tufts(group, reeds, grassTuftTexture(0x8a8a50), 'reed');
-  instanced(group, new THREE.IcosahedronGeometry(0.4, 0), flat(0x8a5a4a, 1), salicorne, false);
+  tufts(group, oyats, grassTuftTexture(0xc8c8b0), 'oyat', look, 1.05);
+  tufts(group, reeds, grassTuftTexture(0xb8b8a0), 'reed', look, 0.95);
+  // salicornes : petites tiges charnues, vertes virant au rouge
+  tufts(group, salicorne, grassTuftTexture(0x8a6a48), 'salicorne');
   grass({ group, rng, nearTown, look, pl, occ });
 }
 
 // Noyau + cartes de feuilles partageant les mêmes matrices d'instance
 function bushy(group, matrices, coreMat, cardTex, key, cards) {
   if (!matrices.length) return;
-  const core = lumpyGeometry(key.length * 31, 1, 0.24).clone().scale(0.64, 0.64, 0.64);
+  // petit noyau sombre (évite les houppiers creux) caché par des cartes nombreuses
+  const core = lumpyGeometry(key.length * 31, 1, 0.24).clone().scale(0.38, 0.38, 0.38);
+  cards = Math.round(cards * 3);
   instanced(group, core, coreMat, matrices);
   instanced(group, leafCardsGeometry(cards, key.length * 17), cardMaterial(cardTex, 'cards-' + key), matrices);
 }
 
-function tufts(group, matrices, tex, key) {
+function tufts(group, matrices, tex, key, look = null, tint = 1.15) {
   if (!matrices.length) return;
-  const im = instanced(group, tuftGeometry(), cardMaterial(tex, 'tuft-' + key), matrices, false);
+  const im = instanced(group, tuftGeometry(), cardMaterial(tex, 'tuft-' + key, 'grass'), matrices, false);
   // plans verticaux : pas d'ombres reçues (évite l'acné d'ombre qui les noircit)
   if (im) im.receiveShadow = false;
+  // chaque touffe prend la teinte du sol où elle pousse
+  if (im && look) {
+    const c = new THREE.Color();
+    matrices.forEach((m, i) => {
+      const x = m.elements[12], z = m.elements[14];
+      c.copy(terrainColor(x, z, heightAt(x, z), look)).multiplyScalar(tint);
+      c.offsetHSL(0.01, 0.05, 0);
+      im.setColorAt(i, c);
+    });
+    im.instanceColor.needsUpdate = true;
+  }
 }
 
 // Touffes d'herbe dans les prés autour de la ville active
@@ -362,7 +392,7 @@ function grass({ group, rng, nearTown, look, pl, occ }) {
     const s = 0.45 + rng() * 0.5;
     list.push(compose(x, h - 0.02, z, s * 1.3, s, s * 1.3, rng() * PI));
   }
-  tufts(group, list, grassTuftTexture(look.grassTuft ?? 0x6a8a3a), 'grass');
+  tufts(group, list, grassTuftTexture(0xc0c8b0), 'grass', look, 1.2);
 }
 
 function mix(a, b, t) {
