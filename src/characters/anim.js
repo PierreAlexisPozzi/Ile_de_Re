@@ -11,12 +11,12 @@ const TAU = Math.PI * 2;
 
 function base() {
   return {
-    hipsY: 0, hipsRx: 0, hipsRy: 0, hipsRz: 0,
+    hipsY: 0, hipsX: 0, hipsRx: 0, hipsRy: 0, hipsRz: 0,
     spineRx: 0, spineRy: 0, spineRz: 0,
     headRx: 0, headRy: 0, headRz: 0,
     armLx: -0.04, armLz: 0.11, armRx: -0.04, armRz: -0.11,
     elbowL: -0.22, elbowR: -0.22, handLx: 0, handRx: 0,
-    legLx: 0, legLz: 0.02, legRx: 0, legRz: -0.02,
+    legLx: 0, legLz: -0.03, legRx: 0, legRz: 0.03,
     kneeL: 0.03, kneeR: 0.03, ankleL: 0, ankleR: 0,
     hold: 0,          // inclinaison supplémentaire des objets tenus
   };
@@ -259,26 +259,87 @@ const ACTIONS = {
 
 export const ACTION_NAMES = Object.keys(ACTIONS);
 
-// Superpose la locomotion (amp 0..1 marche, run 0..1 course).
-function locomotion(P, ph, amp, run, c) {
+// ----------------------------------------------------------------------
+//  Marche et course d'après les courbes de la biomécanique (angles en
+//  degrés sur un cycle de pas double, phase 0 = attaque du talon) :
+//  flexion de hanche, flexion du genou (amorti à l'appui, grande flexion
+//  pendant l'oscillation), cheville (pied à plat, talon qui décolle,
+//  poussée des orteils, pointe relevée pendant l'oscillation).
+// ----------------------------------------------------------------------
+const WALK_HIP = [[0, 27], [0.12, 24], [0.3, 6], [0.5, -13], [0.6, -6], [0.75, 22], [0.88, 30], [1, 27]];
+const WALK_KNEE = [[0, 4], [0.12, 16], [0.3, 6], [0.45, 5], [0.6, 38], [0.71, 58], [0.84, 30], [0.95, 4], [1, 4]];
+const WALK_ANKLE = [[0, -2], [0.08, -8], [0.28, 5], [0.46, 10], [0.6, -14], [0.66, -16], [0.78, -2], [0.9, 2], [1, -2]];
+const RUN_HIP = [[0, 38], [0.15, 24], [0.35, -14], [0.45, -16], [0.6, 18], [0.82, 52], [1, 38]];
+const RUN_KNEE = [[0, 22], [0.14, 40], [0.33, 22], [0.45, 30], [0.63, 98], [0.8, 92], [0.94, 38], [1, 22]];
+const RUN_ANKLE = [[0, 4], [0.14, 16], [0.36, -22], [0.46, -24], [0.62, 2], [0.82, 6], [1, 4]];
+const D2R = Math.PI / 180;
+
+// courbe périodique lissée (Catmull-Rom) échantillonnée en phase φ ∈ [0, 1)
+function curve(keys, ph) {
+  const n = keys.length - 1;
+  let i = 0;
+  while (i < n - 1 && keys[i + 1][0] <= ph) i++;
+  const k0 = keys[(i - 1 + n) % n], k1 = keys[i], k2 = keys[i + 1], k3 = keys[(i + 2) % n === 0 ? 1 : (i + 2) % n];
+  const t = (ph - k1[0]) / (k2[0] - k1[0]);
+  const p0 = k0[1], p1 = k1[1], p2 = k2[1], p3 = k3[1];
+  const t2 = t * t, t3 = t2 * t;
+  return 0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
+}
+
+// Longueur d'une foulée (deux pas) pour la vitesse donnée, en mètres
+export function strideLength(c, speed) {
+  const leg = (c.legLen ?? 0.9) * (c.scale ?? 1);
+  const run = Math.min(1, Math.max(0, (speed - 2.6) / 1.2));
+  const k = Math.min(1.35, Math.max(0.4, speed / 1.5));
+  const walk = leg * (1.05 + 0.55 * k);          // ~1,45 m à 1,4 m/s pour 0,9 m de jambe
+  const runL = leg * (1.9 + 0.35 * Math.min(1.5, speed / 4.5));
+  return walk + (runL - walk) * run;
+}
+
+// Superpose la locomotion. ph : phase du cycle (0..1) de la jambe gauche,
+// amp : 0 à l'arrêt, 1 en marche établie ; speed en m/s
+function locomotion(P, ph, amp, speed, c) {
   if (amp <= 0.001) return;
-  const skirtK = c.longSkirt ? 0.6 : 1;
-  const A = (0.48 + 0.26 * run) * skirtK;
-  P.legLx += -Math.sin(ph) * A * amp;
-  P.legRx += Math.sin(ph) * A * amp;
-  const kb = (0.8 + 0.65 * run) * (c.longSkirt ? 0.7 : 1);
-  P.kneeL += amp * (0.08 + kb * Math.pow(Math.max(0, Math.cos(ph)), 1.5));
-  P.kneeR += amp * (0.08 + kb * Math.pow(Math.max(0, -Math.cos(ph)), 1.5));
-  P.armLx += Math.sin(ph) * (0.42 + 0.35 * run) * amp * (c.armsBusy ? 0.15 : 1);
-  P.armRx += -Math.sin(ph) * (0.42 + 0.35 * run) * amp * (c.armsBusyR ? 0.15 : 1);
-  P.elbowL += -(0.15 + 0.25 * amp + 0.95 * run);
-  P.elbowR += -(0.15 + 0.25 * amp + 0.95 * run);
-  P.hipsY += amp * (0.022 * Math.abs(Math.cos(ph)) - 0.018) - run * 0.03;
-  P.hipsRy += Math.sin(ph) * 0.07 * amp;
-  P.hipsRz += Math.cos(ph) * 0.025 * amp;
-  P.spineRy += -Math.sin(ph) * 0.09 * amp;
-  P.spineRx += 0.035 * amp + 0.17 * run;
-  P.headRx -= (0.035 * amp + 0.15 * run) * 0.7;
+  const run = Math.min(1, Math.max(0, (speed - 2.6) / 1.2));
+  const k = Math.min(1.3, Math.max(0.4, speed / 1.5)) * (c.longSkirt ? 0.75 : 1);
+  const TAU2 = Math.PI * 2;
+  const leg = (phase) => {
+    const w = (keys) => curve(keys, phase);
+    const hip = w(WALK_HIP) * k + (w(RUN_HIP) - w(WALK_HIP) * k) * run;
+    const knee = w(WALK_KNEE) * (0.55 + 0.45 * k) + (w(RUN_KNEE) - w(WALK_KNEE) * (0.55 + 0.45 * k)) * run;
+    const ankle = w(WALK_ANKLE) * (0.6 + 0.4 * k) + (w(RUN_ANKLE) - w(WALK_ANKLE) * (0.6 + 0.4 * k)) * run;
+    return { hip: hip * D2R, knee: knee * D2R, ankle: ankle * D2R };
+  };
+  const L = leg(ph), R = leg((ph + 0.5) % 1);
+  // jambes : flexion de hanche vers l'avant = rotation.x négative
+  P.legLx += (-L.hip - P.legLx) * amp; P.legRx += (-R.hip - P.legRx) * amp;
+  P.kneeL += (L.knee - P.kneeL) * amp; P.kneeR += (R.knee - P.kneeR) * amp;
+  // cheville : flexion dorsale (pointe relevée) = rotation.x négative
+  P.ankleL += (-L.ankle - P.ankleL) * amp; P.ankleR += (-R.ankle - P.ankleR) * amp;
+  // pieds presque sur une ligne (pas de dandinement)
+  P.legLz += (-0.035 - P.legLz) * amp; P.legRz += (0.035 - P.legRz) * amp;
+  const c1 = Math.cos(TAU2 * ph), s1 = Math.sin(TAU2 * ph);
+  // bassin : rotation vers la jambe qui avance, léger abaissement côté oscillant,
+  // transfert du poids sur la jambe d'appui
+  P.hipsRy += -0.075 * k * c1 * amp * (1 - 0.3 * run);
+  P.hipsRz += 0.04 * k * s1 * amp * (1 - 0.5 * run);
+  P.hipsX += 0.012 * s1 * amp * (1 - run);
+  // buste : contre-rotation des épaules, léger penchement en avant ; tête stable
+  P.spineRy += 0.1 * k * c1 * amp * (1 + 0.6 * run);
+  P.spineRz += -0.03 * k * s1 * amp;
+  P.spineRx += (0.04 + 0.14 * run) * amp;
+  P.headRx -= (0.03 + 0.1 * run) * amp;
+  P.headRy -= 0.02 * k * c1 * amp;
+  // bras : balancement opposé aux jambes, coude plus fléchi vers l'avant
+  const ab = (0.28 * k + 0.35 * run) * amp;
+  const lag = Math.cos(TAU2 * ph - 0.35);
+  P.armLx += lag * ab * (c.armsBusy ? 0.15 : 1);
+  P.armRx += -lag * ab * (c.armsBusyR ? 0.15 : 1);
+  P.armLz += 0.04 * amp; P.armRz -= 0.04 * amp;
+  const elbowWalk = 0.22 + 0.3 * k;
+  const fwdL = Math.max(0, -lag), fwdR = Math.max(0, lag);
+  P.elbowL += -((elbowWalk + 0.35 * fwdL * k) * (1 - run) + (1.35 + 0.2 * fwdL) * run - 0.22) * amp;
+  P.elbowR += -((elbowWalk + 0.35 * fwdR * k) * (1 - run) + (1.35 + 0.2 * fwdR) * run - 0.22) * amp;
 }
 
 const KEYS = Object.keys(base());
@@ -293,22 +354,21 @@ export function animate(c, dt) {
   const action = ACTIONS[c.action] || ACTIONS.idle;
   const locoOk = !['sit', 'row', 'pedal', 'swim', 'crouch', 'knap', 'inspect'].includes(c.action);
 
-  // Phase de marche liée à la vitesse réelle (pas = ~0.75 m à la marche)
+  // Phase du cycle liée à la vitesse réelle et à la longueur de foulée :
+  // les pieds ne glissent pas sur le sol
   const speed = c.speed;
-  const amp = locoOk ? Math.min(1, speed / 1.3) : 0;
-  const run = locoOk ? Math.min(1, Math.max(0, (speed - 3.2) / 3)) : 0;
-  c.gaitPhase += dt * (speed / (0.78 + run * 0.5)) * Math.PI;
+  const amp = locoOk ? Math.min(1, speed / 0.9) : 0;
+  if (speed > 0.05) c.gaitPhase = (c.gaitPhase + dt * speed / strideLength(c, speed)) % 1;
   c.pedalPhase += dt * Math.max(0, speed) * 1.6;
 
   if (amp < 0.25 || !locoOk) action(P, t, c);
   else if (c.action === 'carry' || c.action === 'guard') action(P, t, c);
-  locomotion(P, c.gaitPhase, amp, run, c);
-
-  // Pieds à plat : compense la chaîne cuisse + genou
+  // au repos : pieds à plat (compense la chaîne cuisse + genou)
   if (locoOk) {
-    P.ankleL += -(P.legLx + P.kneeL) * 0.65;
-    P.ankleR += -(P.legRx + P.kneeR) * 0.65;
+    P.ankleL += -(P.legLx + P.kneeL);
+    P.ankleR += -(P.legRx + P.kneeR);
   }
+  locomotion(P, c.gaitPhase, amp, speed, c);
 
   // Regard vers une cible (joueur, interlocuteur)
   if (c.look) {
@@ -318,12 +378,21 @@ export function animate(c, dt) {
   P.headRy = Math.max(-1.1, Math.min(1.1, P.headRy));
 
   // Lissage vers la pose cible (transitions sans à-coups)
-  const k = 1 - Math.exp(-dt * 12);
+  // (plus vif en mouvement : le lissage ne doit pas écraser le cycle de marche)
+  const k = 1 - Math.exp(-dt * (12 + 40 * amp));
   const cur = c.pose;
   for (const key of KEYS) cur[key] += (P[key] - cur[key]) * k;
 
   const j = c.j;
-  j.hips.position.y = c.hipBase + cur.hipsY;
+  // hauteur du bassin : la jambe la plus tendue touche le sol (rebond naturel)
+  let hipsY = cur.hipsY;
+  if (locoOk && c.legL1) {
+    const reach = (a, k) => c.legL1 * Math.cos(a) + c.legL2 * Math.cos(a + k);
+    const hL = reach(cur.legLx + cur.hipsRx, cur.kneeL), hR = reach(cur.legRx + cur.hipsRx, cur.kneeR);
+    hipsY += Math.max(hL, hR) - (c.legL1 + c.legL2);
+  }
+  j.hips.position.y = c.hipBase + hipsY;
+  j.hips.position.x = cur.hipsX;
   j.hips.rotation.set(cur.hipsRx, cur.hipsRy, cur.hipsRz);
   j.spine.rotation.set(cur.spineRx + c.stoop, cur.spineRy, cur.spineRz);
   j.head.rotation.set(cur.headRx + c.stoop * 0.6, cur.headRy, cur.headRz);

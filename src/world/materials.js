@@ -8,6 +8,7 @@ import {
   stoneTexture, plasterTexture, roofTexture, thatchTexture, woodTexture,
   paveTexture, dirtTexture, asphaltTexture, concreteTexture, shutterTexture, bumpOf, normalOf, sandTexture,
 } from '../gfx/textures.js';
+import { fbm } from '../gfx/texgen.js';
 
 const cache = new Map();
 export function cached(key, make) {
@@ -15,12 +16,83 @@ export function cached(key, make) {
   return cache.get(key);
 }
 
+// Vieillissement commun du bâti : variation de teinte à grande échelle (casse
+// la répétition des textures) et pied des murs humide, éclaboussé de terre.
+export const WEATHER = {
+  tMacro: { value: null },
+  uGround: { value: -999 },                       // niveau du sol de la ville active
+  uTown: { value: new THREE.Vector3(0, 0, 0) },   // centre (x, z) et rayon de la ville
+};
+export function setWeatherGround(y, x, z, r) {
+  WEATHER.uGround.value = y;
+  WEATHER.uTown.value.set(x, z, r);
+}
+function macroTexture() {
+  if (WEATHER.tMacro.value) return WEATHER.tMacro.value;
+  const S = 256, a = fbm(S, 4, 5, 101), b = fbm(S, 8, 4, 202);
+  const data = new Uint8Array(S * S * 4);
+  for (let i = 0; i < S * S; i++) { data[i * 4] = a[i] * 255; data[i * 4 + 1] = b[i] * 255; data[i * 4 + 2] = 128; data[i * 4 + 3] = 255; }
+  const t = new THREE.DataTexture(data, S, S);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true;
+  t.needsUpdate = true;
+  WEATHER.tMacro.value = t;
+  return t;
+}
+export function weathering(m, { damp = true } = {}) {
+  macroTexture();
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, WEATHER);
+    sh.defines = { ...(sh.defines || {}), WEATHER_DAMP: damp ? 1 : 0 };
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;\nvarying vec3 vWNrm;')
+      .replace('#include <project_vertex>', `#include <project_vertex>
+        {
+          vec4 wq = vec4(transformed, 1.0);
+          vec3 wn = objectNormal;
+          #ifdef USE_INSTANCING
+            wq = instanceMatrix * wq;
+            wn = mat3(instanceMatrix) * wn;
+          #endif
+          vWPos = (modelMatrix * wq).xyz;
+          vWNrm = normalize(mat3(modelMatrix) * wn);
+        }`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform sampler2D tMacro;\nuniform float uGround;\nuniform vec3 uTown;\nvarying vec3 vWPos;\nvarying vec3 vWNrm;')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        {
+          vec3 an = abs(vWNrm);
+          vec2 puv = an.y > 0.7 ? vWPos.xz : (an.x > an.z ? vWPos.zy : vWPos.xy);
+          float m1 = texture2D(tMacro, puv * 0.07).r;
+          float m2 = texture2D(tMacro, puv * 0.23 + 0.37).g;
+          diffuseColor.rgb *= 1.0 + (m1 - 0.5) * 0.24 + (m2 - 0.5) * 0.14;
+          diffuseColor.rgb *= mix(vec3(1.0), vec3(1.05, 1.0, 0.9), clamp((m1 - 0.45) * 1.5, 0.0, 1.0));
+          #if WEATHER_DAMP == 1
+            // pied de mur : humidité qui remonte, éclaboussures de terre
+            float hg = vWPos.y - uGround;
+            float town = 1.0 - smoothstep(uTown.z, uTown.z + 12.0, length(vWPos.xz - uTown.xy));
+            float wall = 1.0 - smoothstep(0.45, 0.75, an.y);
+            float d = (1.0 - smoothstep(0.0, 0.5 + m2 * 0.6, hg)) * step(-0.6, hg) * wall * town;
+            diffuseColor.rgb *= 1.0 - d * 0.3;
+            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.37, 0.3), d * 0.18);
+          #endif
+        }`);
+  };
+  m.customProgramCacheKey = () => `weather-${damp ? 1 : 0}`;
+  return m;
+}
+
 export function texturedMat(key, tex, opts = {}) {
-  return cached(key, () => new THREE.MeshStandardMaterial({
-    map: tex, normalMap: normalOf(tex, 1.2 + (opts.bumpScale ?? 0.6) * 3), normalScale: new THREE.Vector2(1, 1),
-    roughness: opts.roughness ?? 0.95, metalness: opts.metalness ?? 0,
-    color: opts.color ?? 0xffffff, side: opts.side ?? THREE.FrontSide,
-  }));
+  return cached(key, () => {
+    const m = new THREE.MeshStandardMaterial({
+      map: tex, normalMap: normalOf(tex, tex.userData.height ? 2 + (opts.bumpScale ?? 0.6) * 5 : 1.2 + (opts.bumpScale ?? 0.6) * 3),
+      normalScale: new THREE.Vector2(1, 1),
+      roughness: tex.userData.rough ? 1 : opts.roughness ?? 0.95, metalness: opts.metalness ?? 0,
+      color: opts.color ?? 0xffffff, side: opts.side ?? THREE.FrontSide,
+    });
+    if (tex.userData.rough) m.roughnessMap = tex.userData.rough;
+    return weathering(m, { damp: opts.damp ?? true });
+  });
 }
 
 export function flat(color, rough = 0.85, metal = 0, extra = {}) {
@@ -29,15 +101,15 @@ export function flat(color, rough = 0.85, metal = 0, extra = {}) {
 }
 
 export const MAT = {
-  whitewash: () => texturedMat('whitewash', plasterTexture(0xf3eee0, 1), { bumpScale: 0.15, roughness: 0.85 }),
-  cream: () => texturedMat('cream', plasterTexture(0xeee2c4, 1), { bumpScale: 0.15, roughness: 0.85 }),
-  plasterOld: () => texturedMat('plasterOld', plasterTexture(0xe0d4ba, 1), { bumpScale: 0.2, roughness: 0.9 }),
-  plasterGrey: () => texturedMat('plasterGrey', plasterTexture(0xc8c4b8, 1), { bumpScale: 0.2, roughness: 0.95 }),
-  plasterRoman: () => texturedMat('plasterRoman', plasterTexture(0xe8d8bc, 1), { bumpScale: 0.15, roughness: 0.9 }),
-  ochre: () => texturedMat('ochre', plasterTexture(0xd8b07a, 1), { bumpScale: 0.15, roughness: 0.9 }),
-  stone: () => texturedMat('stone', stoneTexture(0xcabfa6, 1, false), { bumpScale: 0.8 }),
+  whitewash: () => texturedMat('whitewash', plasterTexture(0xf3eee0, 1), { bumpScale: 0.05, roughness: 0.85 }),
+  cream: () => texturedMat('cream', plasterTexture(0xeee2c4, 1), { bumpScale: 0.05, roughness: 0.85 }),
+  plasterOld: () => texturedMat('plasterOld', plasterTexture(0xe0d4ba, 1), { bumpScale: 0.08, roughness: 0.9 }),
+  plasterGrey: () => texturedMat('plasterGrey', plasterTexture(0xc8c4b8, 1), { bumpScale: 0.08, roughness: 0.95 }),
+  plasterRoman: () => texturedMat('plasterRoman', plasterTexture(0xe8d8bc, 1), { bumpScale: 0.06, roughness: 0.9 }),
+  ochre: () => texturedMat('ochre', plasterTexture(0xd8b07a, 1), { bumpScale: 0.06, roughness: 0.9 }),
+  stone: () => texturedMat('stone', stoneTexture(0xcabfa6, 1, false, 'ashlar'), { bumpScale: 0.8 }),
   stoneOld: () => texturedMat('stoneOld', stoneTexture(0xb6a888, 1, true), { bumpScale: 0.9 }),
-  stonePale: () => texturedMat('stonePale', stoneTexture(0xe2ddd0, 1, false), { bumpScale: 0.6, roughness: 0.8 }),
+  stonePale: () => texturedMat('stonePale', stoneTexture(0xe2ddd0, 1, false, 'ashlar'), { bumpScale: 0.6, roughness: 0.8 }),
   stoneDark: () => texturedMat('stoneDark', stoneTexture(0x7a7468, 1, true), { bumpScale: 0.9 }),
   rampart: () => texturedMat('rampart', stoneTexture(0xc8bc9c, 1, true), { bumpScale: 0.9 }),
   concrete: () => texturedMat('concrete', concreteTexture(1), { bumpScale: 0.4 }),
@@ -52,7 +124,7 @@ export const MAT = {
   woodGrey: () => texturedMat('woodGrey', woodTexture(0x7a7468, 1), { bumpScale: 0.3 }),
   pave: () => texturedMat('pave', paveTexture(0x8a8276, 1), { bumpScale: 0.7 }),
   paveWarm: () => texturedMat('paveWarm', paveTexture(0xa09078, 1), { bumpScale: 0.7 }),
-  paveRoman: () => texturedMat('paveRoman', paveTexture(0x9a9080, 1), { bumpScale: 0.7 }),
+  paveRoman: () => texturedMat('paveRoman', paveTexture(0x9a9080, 1, 'flags'), { bumpScale: 0.7 }),
   dirt: () => texturedMat('dirt', dirtTexture(0x9a7a52, 1), { bumpScale: 0.4 }),
   dirtPale: () => texturedMat('dirtPale', dirtTexture(0xb8a07a, 1), { bumpScale: 0.35 }),
   sandPath: () => texturedMat('sandPath', sandTexture(1), { bumpScale: 0.2 }),

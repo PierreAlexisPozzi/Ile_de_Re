@@ -12,6 +12,9 @@ import { getEra } from '../story/eras.js';
 import { buildLandscape } from './landscape.js';
 import { Fauna } from './fauna.js';
 import { TOWNS } from './towns/index.js';
+import { setWeatherGround } from './materials.js';
+import { WIND } from '../gfx/foliage.js';
+import { state } from '../core/state.js';
 
 export { heightAt };
 
@@ -124,6 +127,7 @@ export class World {
     const th = def.height ?? Math.max(1.4, rawHeight(tx, tz));
     const R = def.radius ?? 42;
     setTownFlatten(tx, tz, R, th);
+    setWeatherGround(th, tx, tz, R + 20);
     const carveList = typeof def.carves === 'function' ? def.carves(flags) : (def.carves || []);
     setCarves(carveList.map((c) => ({ ...c, depth: c.depthRel !== undefined ? th + c.depthRel : (c.depth ?? -1.4) })), tx, tz, this.townRot);
     this.terrain.refresh(era.look, { x: tx, z: tz, half: R + 45 });
@@ -170,6 +174,8 @@ export class World {
   }
 
   update(dt, time, hours, camera) {
+    WIND.uTime.value = time;
+    WIND.uStrength.value += ((state.weather === 'rain' ? 1.8 : 1) - WIND.uStrength.value) * Math.min(1, dt * 0.5);
     this.time = time;
     this.ocean.update(dt, time, hours);
     if (camera) this.sky.follow(camera);
